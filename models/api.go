@@ -362,18 +362,290 @@ func (osm *OSM) ConvertToAllAdministrativeLevels() (map[string][]map[string]inte
 
 // GetBoundaryCoordinatesFromRelation extracts coordinates from a specific relation
 func (osm *OSM) GetBoundaryCoordinatesFromRelation(relation *Relation) ([]Coordinate, error) {
-	var allCoordinates []Coordinate
-
+	// Lấy tất cả ways của relation
+	var ways []Way
 	for _, member := range relation.Members {
-		if member.Type == "way" {
+		if member.Type == "way" && member.Role == "outer" {
 			if way, found := osm.FindWayByID(member.Ref); found {
-				coordinates := osm.GetWayCoordinates(way)
-				allCoordinates = append(allCoordinates, coordinates...)
+				ways = append(ways, *way)
 			}
 		}
 	}
 
-	return allCoordinates, nil
+	if len(ways) == 0 {
+		return []Coordinate{}, fmt.Errorf("no outer ways found in relation")
+	}
+
+	// Sắp xếp các ways thành một chuỗi liền mạch
+	sortedCoordinates, err := osm.connectWaysIntoPolygon(ways)
+	if err != nil {
+		return []Coordinate{}, fmt.Errorf("failed to connect ways: %w", err)
+	}
+
+	return sortedCoordinates, nil
+}
+
+// connectWaysIntoPolygon connects multiple ways into a single polygon (OSM-style)
+func (osm *OSM) connectWaysIntoPolygon(ways []Way) ([]Coordinate, error) {
+	if len(ways) == 0 {
+		return []Coordinate{}, fmt.Errorf("no ways to connect")
+	}
+
+	// Bước 1: Tạo map để lưu trữ coordinates của từng way
+	wayCoordsMap := make(map[int64][]Coordinate)
+	for _, way := range ways {
+		coords := osm.GetWayCoordinates(&way)
+		if len(coords) > 0 {
+			wayCoordsMap[way.ID] = coords
+		}
+	}
+
+	if len(wayCoordsMap) == 0 {
+		return []Coordinate{}, fmt.Errorf("no valid ways with coordinates")
+	}
+
+	// Bước 2: Tìm đường đi liền mạch giữa các ways (giống OSM website)
+	connectedPath, err := osm.buildConnectedPath(wayCoordsMap)
+	if err != nil {
+		// Nếu không thể nối được, fallback về cách cũ
+		fmt.Printf("Warning: Could not build connected path, using fallback: %v\n", err)
+		return osm.fallbackPolygonConstruction(wayCoordsMap), nil
+	}
+
+	// Bước 3: Đảm bảo polygon được đóng kín
+	if len(connectedPath) > 0 {
+		first := connectedPath[0]
+		last := connectedPath[len(connectedPath)-1]
+		if !osm.isCloseEnough(first, last) {
+			connectedPath = append(connectedPath, first)
+		}
+	}
+
+	return connectedPath, nil
+}
+
+// buildConnectedPath tìm đường đi liền mạch giữa các ways (OSM-style algorithm)
+func (osm *OSM) buildConnectedPath(wayCoordsMap map[int64][]Coordinate) ([]Coordinate, error) {
+	if len(wayCoordsMap) == 1 {
+		// Chỉ có 1 way, trả về luôn
+		for _, coords := range wayCoordsMap {
+			return coords, nil
+		}
+	}
+
+	// Tạo map để track các điểm kết nối
+	pointToWays := make(map[string][]int64)
+	for wayID, coords := range wayCoordsMap {
+		if len(coords) > 0 {
+			// Điểm đầu
+			startKey := osm.coordinateKey(coords[0])
+			pointToWays[startKey] = append(pointToWays[startKey], wayID)
+
+			// Điểm cuối
+			endKey := osm.coordinateKey(coords[len(coords)-1])
+			pointToWays[endKey] = append(pointToWays[endKey], wayID)
+		}
+	}
+
+	// Tìm điểm bắt đầu (điểm chỉ có 1 way kết nối)
+	var startWayID int64
+	var isReversed bool
+
+	for pointKey, wayIDs := range pointToWays {
+		if len(wayIDs) == 1 {
+			startWayID = wayIDs[0]
+			coords := wayCoordsMap[startWayID]
+			if len(coords) > 0 {
+				// Kiểm tra xem điểm này là đầu hay cuối của way
+				if osm.coordinateKey(coords[0]) == pointKey {
+					isReversed = false
+				} else {
+					isReversed = true
+				}
+				break
+			}
+		}
+	}
+
+	if startWayID == 0 {
+		// Không tìm thấy điểm bắt đầu, dùng cách khác
+		return []Coordinate{}, fmt.Errorf("could not find starting point")
+	}
+
+	// Xây dựng đường đi
+	var result []Coordinate
+	processedWays := make(map[int64]bool)
+
+	// Thêm way đầu tiên
+	coords := wayCoordsMap[startWayID]
+	if isReversed {
+		// Đảo ngược thứ tự
+		for i := len(coords) - 1; i >= 0; i-- {
+			result = append(result, coords[i])
+		}
+	} else {
+		result = append(result, coords...)
+	}
+	processedWays[startWayID] = true
+
+	// Tìm các ways tiếp theo
+	for len(processedWays) < len(wayCoordsMap) {
+		lastPoint := result[len(result)-1]
+		lastPointKey := osm.coordinateKey(lastPoint)
+
+		// Tìm way tiếp theo
+		var nextWayID int64
+		var nextIsReversed bool
+
+		for wayID, wayCoords := range wayCoordsMap {
+			if processedWays[wayID] {
+				continue
+			}
+
+			if len(wayCoords) > 0 {
+				firstKey := osm.coordinateKey(wayCoords[0])
+				lastKey := osm.coordinateKey(wayCoords[len(wayCoords)-1])
+
+				if firstKey == lastPointKey {
+					nextWayID = wayID
+					nextIsReversed = false
+					break
+				} else if lastKey == lastPointKey {
+					nextWayID = wayID
+					nextIsReversed = true
+					break
+				}
+			}
+		}
+
+		if nextWayID == 0 {
+			// Không tìm thấy way tiếp theo
+			break
+		}
+
+		// Thêm way tiếp theo
+		coords := wayCoordsMap[nextWayID]
+		if nextIsReversed {
+			// Đảo ngược và bỏ điểm đầu (vì đã có rồi)
+			for i := len(coords) - 2; i >= 0; i-- {
+				result = append(result, coords[i])
+			}
+		} else {
+			// Bỏ điểm đầu (vì đã có rồi)
+			result = append(result, coords[1:]...)
+		}
+		processedWays[nextWayID] = true
+	}
+
+	// Thêm các ways còn lại nếu có
+	for wayID, coords := range wayCoordsMap {
+		if !processedWays[wayID] {
+			result = append(result, coords...)
+		}
+	}
+
+	return result, nil
+}
+
+// coordinateKey tạo key duy nhất cho coordinate (để so sánh)
+func (osm *OSM) coordinateKey(coord Coordinate) string {
+	// Làm tròn để tránh lỗi floating point
+	lat := math.Round(coord.Lat*1000000) / 1000000
+	lon := math.Round(coord.Lon*1000000) / 1000000
+	return fmt.Sprintf("%.6f,%.6f", lat, lon)
+}
+
+// fallbackPolygonConstruction fallback method khi không thể nối ways
+func (osm *OSM) fallbackPolygonConstruction(wayCoordsMap map[int64][]Coordinate) []Coordinate {
+	var allCoords []Coordinate
+	for _, coords := range wayCoordsMap {
+		allCoords = append(allCoords, coords...)
+	}
+
+	// Sử dụng convex hull
+	sortedCoords := osm.sortCoordinatesByConvexHull(allCoords)
+
+	// Đóng polygon
+	if len(sortedCoords) > 0 {
+		first := sortedCoords[0]
+		last := sortedCoords[len(sortedCoords)-1]
+		if !osm.isCloseEnough(first, last) {
+			sortedCoords = append(sortedCoords, first)
+		}
+	}
+
+	return sortedCoords
+}
+
+// sortCoordinatesByConvexHull sắp xếp coordinates theo thứ tự convex hull
+func (osm *OSM) sortCoordinatesByConvexHull(coords []Coordinate) []Coordinate {
+	if len(coords) <= 3 {
+		return coords
+	}
+
+	// Tìm điểm có latitude thấp nhất (nam nhất)
+	minLat := coords[0].Lat
+	minIndex := 0
+	for i, coord := range coords {
+		if coord.Lat < minLat || (coord.Lat == minLat && coord.Lon < coords[minIndex].Lon) {
+			minLat = coord.Lat
+			minIndex = i
+		}
+	}
+
+	// Đặt điểm thấp nhất làm điểm đầu
+	startPoint := coords[minIndex]
+
+	// Sắp xếp các điểm còn lại theo góc từ điểm đầu (theo chiều kim đồng hồ)
+	type PointWithAngle struct {
+		coord Coordinate
+		angle float64
+		index int
+	}
+
+	var pointsWithAngle []PointWithAngle
+	for i, coord := range coords {
+		if i != minIndex {
+			angle := osm.calculateAngle(startPoint, coord)
+			pointsWithAngle = append(pointsWithAngle, PointWithAngle{
+				coord: coord,
+				angle: angle,
+				index: i,
+			})
+		}
+	}
+
+	// Sắp xếp theo góc
+	for i := 0; i < len(pointsWithAngle)-1; i++ {
+		for j := i + 1; j < len(pointsWithAngle); j++ {
+			if pointsWithAngle[i].angle > pointsWithAngle[j].angle {
+				pointsWithAngle[i], pointsWithAngle[j] = pointsWithAngle[j], pointsWithAngle[i]
+			}
+		}
+	}
+
+	// Tạo kết quả cuối cùng
+	result := []Coordinate{startPoint}
+	for _, pwa := range pointsWithAngle {
+		result = append(result, pwa.coord)
+	}
+
+	return result
+}
+
+// calculateAngle tính góc từ điểm start đến điểm end
+func (osm *OSM) calculateAngle(start, end Coordinate) float64 {
+	dx := end.Lon - start.Lon
+	dy := end.Lat - start.Lat
+	return math.Atan2(dy, dx)
+}
+
+// isCloseEnough checks if two coordinates are close enough to be considered the same point
+func (osm *OSM) isCloseEnough(coord1, coord2 Coordinate) bool {
+	const tolerance = 0.000001 // ~0.1 meters
+	latDiff := coord1.Lat - coord2.Lat
+	lonDiff := coord1.Lon - coord2.Lon
+	return (latDiff*latDiff + lonDiff*lonDiff) < (tolerance * tolerance)
 }
 
 // PrettyPrintCoordinates prints coordinates in a readable format

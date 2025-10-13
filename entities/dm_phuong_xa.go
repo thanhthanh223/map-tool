@@ -10,7 +10,6 @@ type DmPhuongXa struct {
 	TenPhuongXaEn  string     `json:"tenPhuongXaEn" gorm:"column:TEN_PHUONG_XA_EN"`
 	TrucThuocHuyen string     `json:"-" gorm:"column:TRUC_THUOC_HUYEN"`
 	TrucThuocTinh  string     `json:"trucThuocTinh" gorm:"column:TRUC_THUOC_TINH"`
-	ToaDoBienGioi  *string    `json:"toaDoBienGioi" gorm:"column:TOA_DO_BIEN_GIOI;type:json"` // JSON array of lon/lat coordinates
 	GhiChu         *string    `json:"-" gorm:"column:GHI_CHU"`
 	TrangThai      *int       `json:"trangThai" gorm:"column:TRANG_THAI"`
 	RegBy          string     `json:"regBy" gorm:"column:REG_BY"`
@@ -18,6 +17,7 @@ type DmPhuongXa struct {
 	LastUpdate     *time.Time `json:"-" gorm:"column:LAST_UPDATE"`
 	LastUpdateBy   string     `json:"lastUpdateBy" gorm:"column:LAST_UPDATE_BY"`
 	CloseDate      *time.Time `json:"-" gorm:"column:CLOSE_DATE"`
+	AddressBase    `gorm:"embedded" json:",inline"`
 }
 
 type DmPhuongXaTabler interface {

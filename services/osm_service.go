@@ -265,17 +265,17 @@ func (s *OSMService) processAdministrativeEntities(osm *models.OSM) (map[string]
 			Boundary:     boundaryJSON,
 		}
 
-		// Classify by level
-		if capitalLevel == 4 || adminLevel == 4 {
+		// Classify by level - Relation thường dùng admin_level
+		if adminLevel == 4 {
 			entity.Type = "province"
 			administrativeData["provinces"] = append(administrativeData["provinces"], entity)
-			fmt.Printf("  -> Added as PROVINCE\n")
-		} else if capitalLevel == 6 || adminLevel == 6 {
+			fmt.Printf("  -> Added as PROVINCE (admin_level=4)\n")
+		} else if adminLevel == 6 {
 			entity.Type = "commune"
 			administrativeData["communes"] = append(administrativeData["communes"], entity)
-			fmt.Printf("  -> Added as COMMUNE\n")
+			fmt.Printf("  -> Added as COMMUNE (admin_level=6)\n")
 		} else {
-			fmt.Printf("  -> Skipped (level %d/%d not recognized)\n", adminLevel, capitalLevel)
+			fmt.Printf("  -> Skipped (admin_level=%d not recognized)\n", adminLevel)
 		}
 	}
 
@@ -301,15 +301,15 @@ func (s *OSMService) processAdministrativeEntities(osm *models.OSM) (map[string]
 			Boundary:     "", // Nodes don't have boundary coordinates
 		}
 
-		// Classify by capital level
+		// Classify by capital level - Node thường dùng capital level
 		if capitalLevel == 4 {
 			entity.Type = "province"
 			administrativeData["provinces"] = append(administrativeData["provinces"], entity)
-			fmt.Printf("  -> Added as PROVINCE\n")
+			fmt.Printf("  -> Added as PROVINCE (capital=4)\n")
 		} else if capitalLevel == 6 {
 			entity.Type = "commune"
 			administrativeData["communes"] = append(administrativeData["communes"], entity)
-			fmt.Printf("  -> Added as COMMUNE\n")
+			fmt.Printf("  -> Added as COMMUNE (capital=6)\n")
 		} else {
 			fmt.Printf("  -> Skipped (capital level %d not recognized)\n", capitalLevel)
 		}

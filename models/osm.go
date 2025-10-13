@@ -310,22 +310,26 @@ func (r *Relation) GetCapitalLevel() int {
 	return -1
 }
 
-// IsProvinceOrCity checks if this is a province or city (capital level 4)
+// IsProvinceOrCity checks if this is a province or city
 func (n *Node) IsProvinceOrCity() bool {
+	// Tỉnh/thành phố thường là Node với capital=4
 	return n.GetCapitalLevel() == 4
 }
 
-// IsCommune checks if this is a commune (capital level 6)
+// IsCommune checks if this is a commune/ward
 func (n *Node) IsCommune() bool {
+	// Commune/ward ít khi là Node, chủ yếu là Relation
 	return n.GetCapitalLevel() == 6
 }
 
-// IsProvinceOrCity checks if this is a province or city (capital level 4)
+// IsProvinceOrCity checks if this is a province or city
 func (r *Relation) IsProvinceOrCity() bool {
-	return r.GetCapitalLevel() == 4
+	// Tỉnh/thành phố có thể là Relation với admin_level=4
+	return r.GetAdminLevel() == 4
 }
 
-// IsCommune checks if this is a commune (capital level 6)
+// IsCommune checks if this is a commune/ward
 func (r *Relation) IsCommune() bool {
-	return r.GetCapitalLevel() == 6
+	// Commune/ward thường là Relation với admin_level=6
+	return r.GetAdminLevel() == 6
 }

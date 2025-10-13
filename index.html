@@ -772,32 +772,7 @@
             popupAnchor: [0, -28]
         });
 
-        // Đánh dấu vị trí điểm lên bản đồ
-        // Đánh dấu vị trí điểm kiểm tra trên bản đồ, khi click vào marker sẽ cho biết điểm này thuộc xã nào (nếu có)
-        const marker = L.marker(testPoint, {icon: locationIcon})
-            .addTo(map)
-            .bindPopup(
-                `<div class="info"><b>Đánh dấu vị trí điểm</b><br>Lat: ${testPoint[0]}, Lon: ${testPoint[1]}</div>`
-            )
-            .openPopup();
 
-        marker.on('click', function(e) {
-            // Kiểm tra điểm này có thuộc vòng (polygon) được tạo bởi các way ghép lại ở trên không
-            let name = null;
-            const idx = communePolygons.findIndex(polyObj => isPointInPolygonLeaflet(testPoint, polyObj.polygon));
-            if (idx !== -1) {
-                name = communePolygons[idx].name;
-            }
-            if (name) {
-                marker.setPopupContent(
-                    `<div class="info"><b>Đánh dấu vị trí điểm</b><br>Lat: ${testPoint[0]}, Lon: ${testPoint[1]}<br><b>Thuộc vòng được tạo bởi các way:</b> ${name}</div>`
-                );
-            } else {
-                marker.setPopupContent(
-                    `<div class="info"><b>Đánh dấu vị trí điểm</b><br>Lat: ${testPoint[0]}, Lon: ${testPoint[1]}<br><span style="color:red"><b>Điểm này không nằm trong vòng nào được tạo bởi các way!</b></span></div>`
-                );
-            }
-        });
 
         // Các chức năng khác giữ nguyên (vẽ junction, thống kê...)
         function getWayJunctionNodes(ways) {

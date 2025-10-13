@@ -19,6 +19,13 @@ type AddressBase struct {
 	LatCenter     *float64 `json:"latCenter" gorm:"column:LAT_CENTER"`
 }
 type Address struct {
+	ID  int64   `json:"id" gorm:"column:ID"` // OSM Node ID
 	Lon float64 `json:"lon" gorm:"column:LON"`
 	Lat float64 `json:"lat" gorm:"column:LAT"`
+}
+
+// WayAddress represents OSM Way data from crawled XML
+type WayAddress struct {
+	ID    int64    `json:"id" gorm:"column:WAY_ID"`             // OSM Way ID
+	Nodes []string `json:"nodes" gorm:"column:NODES;type:json"` // Array of node references
 }

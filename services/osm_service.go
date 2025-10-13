@@ -12,7 +12,7 @@ import (
 type OSMServiceInterface interface {
 	FetchAndProcessRelation(relationID int64) (*models.OSMProcessingResult, error)
 	GetBoundaryStringFromResult(result *models.OSMProcessingResult) string
-	UpdateStringBoundaryToDatabase(id string, level int, boundaryString string) error
+	UpdateStringBoundaryToDatabase(id string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64) error
 }
 type OSMService struct {
 	client         *models.OSMApiClient
@@ -93,12 +93,40 @@ func (s *OSMService) processOSMData(osm *models.OSM) (*models.OSMProcessingResul
 	// Get capital level statistics
 	capitalStats := s.getCapitalLevelStats(osm)
 
+	// Convert OSM Ways to WayAddress format
+	var ways []models.WayAddress
+	for _, way := range osm.Ways {
+		ways = append(ways, way.ToWayAddress())
+	}
+
+	// Convert OSM Nodes to Address format
+	var nodes []models.Address
+	var centerPoints []models.CenterPoint
+	for _, node := range osm.Nodes {
+		nodes = append(nodes, node.ToAddress())
+
+		// Only treat nodes that contain a 'capital' tag as center points
+		isCenter := false
+		for _, tag := range node.Tags {
+			if tag.Key == "capital" {
+				isCenter = true
+				break
+			}
+		}
+		if isCenter {
+			centerPoints = append(centerPoints, node.ToCenterPoint())
+		}
+	}
+
 	return &models.OSMProcessingResult{
 		BasicInfo:       basicInfo,
 		Boundaries:      boundaryData,
 		Administrative:  administrativeData,
 		CapitalStats:    capitalStats,
 		JSONCoordinates: boundaryData.JSONString,
+		Ways:            ways,
+		Nodes:           nodes,
+		CenterPoints:    centerPoints,
 	}, nil
 }
 
@@ -368,7 +396,7 @@ func (s *OSMService) GetBoundaryStringFromResult(result *models.OSMProcessingRes
 	return ""
 }
 
-func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boundaryString string) error {
+func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64) error {
 	if s.dmTTRepo == nil || s.dmPhuongXaRepo == nil {
 		return fmt.Errorf("database repositories not initialized, use NewOSMServiceWithDB()")
 	}
@@ -382,7 +410,7 @@ func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boun
 		if tt == nil {
 			return fmt.Errorf("không tìm thấy tỉnh/thành phố '%s' trong database", name)
 		}
-		return s.dmTTRepo.UpdateBienGioiByMaTT(tt.MaTT, &boundaryString)
+		return s.dmTTRepo.UpdateDataAddressByMaTT(tt.MaTT, &boundaryString, &wayAddress, &lonCenter, &latCenter)
 	case 6: // Xã/phường
 		px, err := s.dmPhuongXaRepo.GetByName(name)
 		if err != nil {
@@ -391,7 +419,7 @@ func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boun
 		if px == nil {
 			return fmt.Errorf("không tìm thấy xã/phường '%s' trong database", name)
 		}
-		return s.dmPhuongXaRepo.UpdateBienGioiByMaPhuongXa(px.MaPhuongXa, &boundaryString)
+		return s.dmPhuongXaRepo.UpdateDataAddressByMaPhuongXa(px.MaPhuongXa, &boundaryString, &wayAddress, &lonCenter, &latCenter)
 	default:
 		return fmt.Errorf("level '%d' không được hỗ trợ", level)
 	}

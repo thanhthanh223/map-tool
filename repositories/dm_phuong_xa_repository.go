@@ -9,7 +9,7 @@ import (
 
 type DmPhuongXaRepositoryInterface interface {
 	GetByName(name string) (*entities.DmPhuongXa, error)
-	UpdateBienGioiByMaPhuongXa(id string, bienGioi *string) error
+	UpdateDataAddressByMaPhuongXa(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error
 }
 
 // DmPhuongXaRepository handles database operations for DmPhuongXa entities
@@ -35,10 +35,16 @@ func (r *DmPhuongXaRepository) GetByName(name string) (*entities.DmPhuongXa, err
 	return &dmPhuongXa, nil
 }
 
-func (r *DmPhuongXaRepository) UpdateBienGioiByMaPhuongXa(id string, bienGioi *string) error {
+func (r *DmPhuongXaRepository) UpdateDataAddressByMaPhuongXa(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error {
+	mapUpdate := map[string]interface{}{
+		"TOA_DO_BIEN_GIOI": bienGioi,
+		"WAY_ADDRESS":      wayAddress,
+		"LON_CENTER":       lonCenter,
+		"LAT_CENTER":       latCenter,
+	}
 	if err := r.db.Model(&entities.DmPhuongXa{}).
 		Where("MA_PHUONG_XA = ?", id).
-		Update("TOA_DO_BIEN_GIOI", bienGioi).Error; err != nil {
+		Updates(mapUpdate).Error; err != nil {
 		return fmt.Errorf("failed to update boundary for DmPhuongXa %s: %w", id, err)
 	}
 	return nil

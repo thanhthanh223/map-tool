@@ -201,6 +201,7 @@ func DecodeCoordinatesFromBinary(binaryString string) ([]Coordinate, error) {
 		longitude := math.Float64frombits(lon)
 
 		coordinates = append(coordinates, Coordinate{
+			ID:  0, // Binary data doesn't contain ID, set to 0
 			Lat: latitude,
 			Lon: longitude,
 		})

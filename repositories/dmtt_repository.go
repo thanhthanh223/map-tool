@@ -9,7 +9,7 @@ import (
 
 type DmTTRepositoryInterface interface {
 	GetByName(name string) (*entities.DmTT, error)
-	UpdateBienGioiByMaTT(id string, bienGioi *string) error
+	UpdateDataAddressByMaTT(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error
 }
 type DmTTRepository struct {
 	*BaseRepository
@@ -32,7 +32,7 @@ func (r *DmTTRepository) Create(dmTT *entities.DmTT) error {
 
 func (r *DmTTRepository) GetByName(name string) (*entities.DmTT, error) {
 	var dmTT entities.DmTT
-	if err := r.db.Where("TEN_TT = ?", name).First(&dmTT).Error; err != nil {
+	if err := r.db.Where("TENTT LIKE ?", "%"+name+"%").First(&dmTT).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -41,10 +41,16 @@ func (r *DmTTRepository) GetByName(name string) (*entities.DmTT, error) {
 	return &dmTT, nil
 }
 
-func (r *DmTTRepository) UpdateBienGioiByMaTT(id string, bienGioi *string) error {
+func (r *DmTTRepository) UpdateDataAddressByMaTT(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error {
+	mapUpdate := map[string]interface{}{
+		"TOA_DO_BIEN_GIOI": bienGioi,
+		"WAY_ADDRESS":      wayAddress,
+		"LON_CENTER":       lonCenter,
+		"LAT_CENTER":       latCenter,
+	}
 	if err := r.db.Model(&entities.DmTT{}).
-		Where("MA_TT = ?", id).
-		Update("TOA_DO_BIEN_GIOI", bienGioi).Error; err != nil {
+		Where("MATT = ?", id).
+		Updates(mapUpdate).Error; err != nil {
 		return fmt.Errorf("failed to update boundary for DmTT %s: %w", id, err)
 	}
 	return nil

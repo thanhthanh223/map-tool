@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -79,41 +80,31 @@ func main() {
 					if province.Boundary == "" {
 						continue
 					}
+					if strings.Contains(province.Name, "Thành phố") || strings.Contains(province.Name, "Tỉnh") {
+						province.Name = strings.ReplaceAll(province.Name, "Thành phố ", "")
+						province.Name = strings.ReplaceAll(province.Name, "Tỉnh ", "")
+						province.Name = strings.TrimSpace(province.Name)
+					}
 					name := province.Name
 					adminLevel := province.AdminLevel
 					fmt.Printf("Tìm thấy province: %s (admin_level: %d)\n", name, adminLevel)
 					fmt.Println("Đang lấy boundary string từ kết quả province...")
 					provinceBoundaryString := province.Boundary
+					wayAddressBytes, err := json.Marshal(result.Ways)
+					if err != nil {
+						fmt.Printf("Lỗi khi chuyển đổi province.Ways thành JSON: %v\n", err)
+						wayAddressBytes = []byte("")
+					}
+					wayAddress := string(wayAddressBytes)
+					LonCenter := result.CenterPoints[0].Lon
+					LatCenter := result.CenterPoints[0].Lat
 					// Lưu province
 					fmt.Println("\n=== LƯU DATABASE - PROVINCE ===")
-					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, provinceBoundaryString)
+					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, provinceBoundaryString, wayAddress, LonCenter, LatCenter)
 					if err != nil {
 						fmt.Printf("Lỗi khi lưu province vào database: %v\n", err)
 					} else {
 						fmt.Printf("Đã lưu boundary string cho '%s' với level '%d'\n", name, adminLevel)
-					}
-
-					// Nếu có communes bên trong, gọi tiếp cho từng commune
-					if communes, existsC := result.Administrative["communes"]; existsC && len(communes) > 0 {
-						fmt.Printf("\nTìm thấy %d commune(s) trong province '%s', tiến hành xử lý từng commune\n", len(communes), name)
-						for _, commune := range communes {
-							if commune.Boundary == "" {
-								continue
-							}
-
-							resultPX, errPX := osmService.FetchAndProcessRelation(commune.ID)
-							if errPX != nil {
-								fmt.Printf("Lỗi khi xử lý dữ liệu OSM (ID %d): %v\n", commune.ID, errPX)
-								continue
-							}
-							communeBoundaryString := resultPX.Boundaries.JSONString
-							err = osmService.UpdateStringBoundaryToDatabase(commune.Name, commune.AdminLevel, communeBoundaryString)
-							if err != nil {
-								fmt.Printf("Lỗi khi lưu commune vào database: %v\n", err)
-							} else {
-								fmt.Printf("Đã lưu boundary string cho '%s' với level '%d'\n", commune.Name, commune.AdminLevel)
-							}
-						}
 					}
 				}
 			}
@@ -126,6 +117,9 @@ func main() {
 		if result != nil && result.Administrative != nil {
 			fmt.Printf("- Tỉnh/thành phố: %d\n", len(result.Administrative["provinces"]))
 			fmt.Printf("- Xã/phường: %d\n", len(result.Administrative["communes"]))
+			fmt.Printf("- Nodes: %d\n", len(result.Nodes))
+			fmt.Printf("- Ways: %d\n", len(result.Ways))
+			fmt.Printf("- Center Points: %d\n", len(result.CenterPoints))
 
 			// Hiển thị chi tiết các entities
 			if len(result.Administrative["provinces"]) > 0 {
@@ -143,8 +137,10 @@ func main() {
 						commune.Name, commune.ID, commune.AdminLevel, commune.CapitalLevel)
 				}
 			}
+
 		}
 	}
+
 	fmt.Println("=== KẾT THÚC CHƯƠNG TRÌNH ===")
 }
 

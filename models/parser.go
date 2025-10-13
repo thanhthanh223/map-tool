@@ -162,6 +162,7 @@ func (osm *OSM) GetWayCoordinates(way *Way) []Coordinate {
 	for _, nodeRef := range way.Nodes {
 		if node, found := osm.FindNodeByID(nodeRef.Ref); found {
 			coordinates = append(coordinates, Coordinate{
+				ID:  node.ID, // Include OSM Node ID
 				Lat: node.Lat,
 				Lon: node.Lon,
 			})

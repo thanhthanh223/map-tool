@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -85,8 +86,75 @@ type Tag struct {
 
 // Coordinate represents a geographical coordinate
 type Coordinate struct {
+	ID  int64   `json:"id"` // OSM Node ID
 	Lat float64 `json:"lat"`
 	Lon float64 `json:"lon"`
+}
+
+// WayAddress represents OSM Way data from crawled XML
+type WayAddress struct {
+	ID    int64    `json:"id"`    // OSM Way ID
+	Nodes []string `json:"nodes"` // Array of node references
+}
+
+type Address struct {
+	ID  int64   `json:"id"` // OSM Node ID
+	Lon float64 `json:"lon"`
+	Lat float64 `json:"lat"`
+}
+
+// CenterPoint represents a central administrative point (like Hanoi center)
+type CenterPoint struct {
+	ID      int64   `json:"id"`      // OSM Node ID
+	Lon     float64 `json:"lon"`     // Longitude
+	Lat     float64 `json:"lat"`     // Latitude
+	Capital string  `json:"capital"` // capital tag
+	Name    string  `json:"name"`    // Primary name
+}
+
+// ToAddress converts OSM Node to Address format
+func (node *Node) ToAddress() Address {
+	return Address{
+		ID:  node.ID,
+		Lon: node.Lon,
+		Lat: node.Lat,
+	}
+}
+
+// ToCenterPoint converts OSM Node to CenterPoint format (for administrative centers)
+func (node *Node) ToCenterPoint() CenterPoint {
+	var capital *string
+
+	// Extract tags
+	for _, tag := range node.Tags {
+		switch tag.Key {
+		case "capital":
+			capital = &tag.Value
+
+		}
+	}
+
+	return CenterPoint{
+		ID:      node.ID,
+		Lon:     node.Lon,
+		Lat:     node.Lat,
+		Name:    node.GetName(),
+		Capital: *capital,
+	}
+}
+
+// ToWayAddress converts OSM Way to WayAddress format
+func (way *Way) ToWayAddress() WayAddress {
+	// Extract node references
+	var nodes []string
+	for _, nodeRef := range way.Nodes {
+		nodes = append(nodes, fmt.Sprintf("%d", nodeRef.Ref))
+	}
+
+	return WayAddress{
+		ID:    way.ID,
+		Nodes: nodes,
+	}
 }
 
 // AdminEntity represents an administrative entity with level information
@@ -109,6 +177,9 @@ type OSMProcessingResult struct {
 	Administrative  map[string][]AdminEntity `json:"administrative"`
 	CapitalStats    map[int]int              `json:"capitalStats"`
 	JSONCoordinates string                   `json:"jsonCoordinates"`
+	Ways            []WayAddress             `json:"ways"`
+	Nodes           []Address                `json:"nodes"`        // OSM Nodes data
+	CenterPoints    []CenterPoint            `json:"centerPoints"` // Administrative center points
 }
 
 // BasicOSMInfo contains basic OSM information

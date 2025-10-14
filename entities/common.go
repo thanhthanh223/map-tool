@@ -14,9 +14,13 @@ type DMBase struct {
 }
 
 type AddressBase struct {
-	ToaDoBienGioi *string  `json:"toaDoBienGioi" gorm:"column:TOA_DO_BIEN_GIOI;type:json"` // JSON array of lon/lat coordinates
-	LonCenter     *float64 `json:"lonCenter" gorm:"column:LON_CENTER"`
-	LatCenter     *float64 `json:"latCenter" gorm:"column:LAT_CENTER"`
+	LonCenter   *float64 `json:"lonCenter" gorm:"column:LON_CENTER"`
+	LatCenter   *float64 `json:"latCenter" gorm:"column:LAT_CENTER"`
+	MaxLat      *float64 `json:"maxLat" gorm:"column:MAX_LAT"`
+	MinLat      *float64 `json:"minLat" gorm:"column:MIN_LAT"`
+	MaxLon      *float64 `json:"maxLon" gorm:"column:MAX_LON"`
+	MinLon      *float64 `json:"minLon" gorm:"column:MIN_LON"`
+	PolygonData *string  `json:"polygonData" gorm:"column:POLYGON_DATA;type:json"` // Polygon from CreatePolygonFromWaysAndNodes
 }
 type Address struct {
 	ID  int64   `json:"id" gorm:"column:ID"` // OSM Node ID

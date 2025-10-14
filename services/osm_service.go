@@ -1,10 +1,13 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"sort"
+	"strconv"
+	"tool-map/entities"
 	"tool-map/models"
 	"tool-map/repositories"
 
@@ -16,6 +19,8 @@ type OSMServiceInterface interface {
 	GetBoundaryStringFromResult(result *models.OSMProcessingResult) string
 	UpdateStringBoundaryToDatabase(id string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64) error
 	CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64, error)
+	UpdatePolygonToDatabase(id string, level int, polygonData [][]float64) error
+	FindCommuneByCoordinate(provinceCode string, lat, lon float64) (*entities.DmPhuongXa, error)
 }
 type OSMService struct {
 	client         *models.OSMApiClient
@@ -413,7 +418,7 @@ func (s *OSMService) GetBoundaryStringFromResult(result *models.OSMProcessingRes
 	return ""
 }
 
-func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64) error {
+func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, maxLat, minLat, maxLon, minLon, lonCenter, latCenter float64) error {
 	if s.dmTTRepo == nil || s.dmPhuongXaRepo == nil {
 		return fmt.Errorf("database repositories not initialized, use NewOSMServiceWithDB()")
 	}
@@ -427,7 +432,7 @@ func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boun
 		if tt == nil {
 			return fmt.Errorf("không tìm thấy tỉnh/thành phố '%s' trong database", name)
 		}
-		return s.dmTTRepo.UpdateDataAddressByMaTT(tt.MaTT, &boundaryString, &wayAddress, &lonCenter, &latCenter)
+		return s.dmTTRepo.UpdateDataAddressByMaTT(tt.MaTT, &maxLat, &minLat, &maxLon, &minLon, &lonCenter, &latCenter)
 	case 6: // Xã/phường
 		px, err := s.dmPhuongXaRepo.GetByName(name)
 		if err != nil {
@@ -436,34 +441,37 @@ func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boun
 		if px == nil {
 			return fmt.Errorf("không tìm thấy xã/phường '%s' trong database", name)
 		}
-		return s.dmPhuongXaRepo.UpdateDataAddressByMaPhuongXa(px.MaPhuongXa, &boundaryString, &wayAddress, &lonCenter, &latCenter)
+		return s.dmPhuongXaRepo.UpdateDataAddressByMaPhuongXa(px.MaPhuongXa, &maxLat, &minLat, &maxLon, &minLon, &lonCenter, &latCenter)
 	default:
 		return fmt.Errorf("level '%d' không được hỗ trợ", level)
 	}
 }
 
 // CreatePolygonFromWaysAndNodes tạo polygon từ ways và nodes
-func (s *OSMService) CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64, error) {
-	fmt.Printf("\n=== TẠO POLYGON TỪ WAYS VÀ NODES ===\n")
+func (s *OSMService) CreatePolygonFromWaysAndNodes(ways []models.WayAddress, nodes []models.Address) ([][]float64, error) {
+	fmt.Printf("\n=== TẠO POLYGON TỪ WAYS VÀ NOTES ===\n")
 
-	// Tạo node map từ OSM nodes
+	// Xây dựng map cho nodes với ID là key, value là [lat, lon]
 	nodeMap := make(map[int64][]float64)
-	for _, node := range osm.Nodes {
+	for _, node := range nodes {
 		nodeMap[node.ID] = []float64{node.Lat, node.Lon}
 	}
 
 	fmt.Printf("Created node map with %d nodes\n", len(nodeMap))
 
-	// Tạo way coordinates từ ways
+	// Tạo danh sách WayCoordinates từ ways và note
 	var wayCoords []WayCoordinates
-	for _, way := range osm.Ways {
+	for _, way := range ways {
 		var coords [][]float64
 		var nodeIDs []int64
 
-		for _, nodeRef := range way.Nodes {
-			if coord, exists := nodeMap[nodeRef.Ref]; exists {
-				coords = append(coords, coord)
-				nodeIDs = append(nodeIDs, nodeRef.Ref)
+		// way.Nodes là slice []string, cần convert sang int64
+		for _, nodeRefStr := range way.Nodes {
+			if nodeRef, err := strconv.ParseInt(nodeRefStr, 10, 64); err == nil {
+				if coord, exists := nodeMap[nodeRef]; exists {
+					coords = append(coords, coord)
+					nodeIDs = append(nodeIDs, nodeRef)
+				}
 			}
 		}
 
@@ -482,11 +490,11 @@ func (s *OSMService) CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64
 		return nil, fmt.Errorf("no valid ways found")
 	}
 
-	// Tạo polygon liền mạch
+	// Tạo polygon liền mạch từ kết quả của ways và note
 	polygon, err := s.buildConnectedPath(wayCoords)
 	if err != nil {
 		fmt.Printf("Warning: buildConnectedPath failed: %v\n", err)
-		// Fallback: sử dụng convex hull
+		// Fallback: sử dụng convex hull từ ways & node
 		polygon = s.fallbackPolygonConstruction(wayCoords)
 		fmt.Printf("Using fallback convex hull with %d points\n", len(polygon))
 	}
@@ -594,10 +602,8 @@ func (s *OSMService) buildConnectedPath(wayCoords []WayCoordinates) ([][]float64
 		}
 	}
 
-	// Thêm điểm cuối cùng
-	if len(wayCoords) > 0 && len(wayCoords[0].Coords) > 0 {
-		result = append(result, wayCoords[0].Coords[len(wayCoords[0].Coords)-1])
-	}
+	// Thêm điểm cuối cùng - không cần thiết vì đã được xử lý trong loop
+	// Loại bỏ logic thừa này để tránh duplicate points
 
 	return result, nil
 }
@@ -675,4 +681,51 @@ func (s *OSMService) angle(p1, p2 []float64) float64 {
 // cross tính cross product của 3 điểm
 func (s *OSMService) cross(p1, p2, p3 []float64) float64 {
 	return (p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0])
+}
+
+// UpdatePolygonToDatabase lưu polygon data vào database
+func (s *OSMService) UpdatePolygonToDatabase(name string, level int, polygonData [][]float64) error {
+	if s.dmTTRepo == nil || s.dmPhuongXaRepo == nil {
+		return fmt.Errorf("database repositories not initialized, use NewOSMServiceWithDB()")
+	}
+
+	// Convert polygon data to JSON string
+	polygonJSON, err := json.Marshal(polygonData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal polygon data to JSON: %w", err)
+	}
+	polygonString := string(polygonJSON)
+
+	switch level {
+	case 4: // Tỉnh/thành phố
+		tt, err := s.dmTTRepo.GetByName(name)
+		if err != nil {
+			return fmt.Errorf("không thể lấy dữ liệu tỉnh/thành phố từ database: %w", err)
+		}
+		if tt == nil {
+			return fmt.Errorf("không tìm thấy tỉnh/thành phố '%s' trong database", name)
+		}
+		return s.dmTTRepo.UpdatePolygonDataByMaTT(tt.MaTT, &polygonString)
+	case 6: // Xã/phường
+		// TODO: Implement for communes if needed
+		px, err := s.dmPhuongXaRepo.GetByName(name)
+		if err != nil {
+			return fmt.Errorf("không thể lấy dữ liệu xã/phường từ database: %w", err)
+		}
+		if px == nil {
+			return fmt.Errorf("không tìm thấy xã/phường '%s' trong database", name)
+		}
+		return s.dmPhuongXaRepo.UpdatePolygonDataByMaPhuongXa(px.MaPhuongXa, &polygonString)
+	default:
+		return fmt.Errorf("level '%d' không được hỗ trợ", level)
+	}
+}
+
+// FindCommuneByCoordinate tìm xã/phường từ tọa độ lat/lon và mã tỉnh thành
+func (s *OSMService) FindCommuneByCoordinate(provinceCode string, lat, lon float64) (*entities.DmPhuongXa, error) {
+	if s.dmTTRepo == nil {
+		return nil, fmt.Errorf("database repositories not initialized, use NewOSMServiceWithDB()")
+	}
+
+	return s.dmTTRepo.FindCommuneByCoordinate(provinceCode, lat, lon)
 }

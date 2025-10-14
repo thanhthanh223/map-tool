@@ -9,7 +9,8 @@ import (
 
 type DmPhuongXaRepositoryInterface interface {
 	GetByName(name string) (*entities.DmPhuongXa, error)
-	UpdateDataAddressByMaPhuongXa(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error
+	UpdateDataAddressByMaPhuongXa(id string, maxLat, minLat, maxLon, minLon, lonCenter, latCenter *float64) error
+	UpdatePolygonDataByMaPhuongXa(id string, polygonData *string) error
 }
 
 // DmPhuongXaRepository handles database operations for DmPhuongXa entities
@@ -35,17 +36,31 @@ func (r *DmPhuongXaRepository) GetByName(name string) (*entities.DmPhuongXa, err
 	return &dmPhuongXa, nil
 }
 
-func (r *DmPhuongXaRepository) UpdateDataAddressByMaPhuongXa(id string, bienGioi, wayAddress *string, lonCenter, latCenter *float64) error {
+func (r *DmPhuongXaRepository) UpdateDataAddressByMaPhuongXa(id string, maxLat, minLat, maxLon, minLon, lonCenter, latCenter *float64) error {
 	mapUpdate := map[string]interface{}{
-		"TOA_DO_BIEN_GIOI": bienGioi,
-		"WAY_ADDRESS":      wayAddress,
-		"LON_CENTER":       lonCenter,
-		"LAT_CENTER":       latCenter,
+		"MAX_LAT":    maxLat,
+		"MIN_LAT":    minLat,
+		"MAX_LON":    maxLon,
+		"MIN_LON":    minLon,
+		"LON_CENTER": lonCenter,
+		"LAT_CENTER": latCenter,
 	}
 	if err := r.db.Model(&entities.DmPhuongXa{}).
 		Where("MA_PHUONG_XA = ?", id).
 		Updates(mapUpdate).Error; err != nil {
 		return fmt.Errorf("failed to update boundary for DmPhuongXa %s: %w", id, err)
+	}
+	return nil
+}
+
+func (r *DmPhuongXaRepository) UpdatePolygonDataByMaPhuongXa(id string, polygonData *string) error {
+	mapUpdate := map[string]interface{}{
+		"POLYGON_DATA": polygonData,
+	}
+	if err := r.db.Model(&entities.DmPhuongXa{}).
+		Where("MA_PHUONG_XA = ?", id).
+		Updates(mapUpdate).Error; err != nil {
+		return fmt.Errorf("failed to update polygon data for DmPhuongXa %s: %w", id, err)
 	}
 	return nil
 }

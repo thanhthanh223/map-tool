@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -90,53 +89,39 @@ func main() {
 					adminLevel := province.AdminLevel
 					fmt.Printf("Tìm thấy province: %s (admin_level: %d)\n", name, adminLevel)
 					fmt.Println("Đang lấy boundary string từ kết quả province...")
-					provinceBoundaryString := province.Boundary
-					wayAddressBytes, err := json.Marshal(result.Ways)
-					if err != nil {
-						fmt.Printf("Lỗi khi chuyển đổi province.Ways thành JSON: %v\n", err)
-						wayAddressBytes = []byte("")
-					}
-					wayAddress := string(wayAddressBytes)
+
+					// Lấy boundary từ province
 					LonCenter := result.CenterPoints[0].Lon
 					LatCenter := result.CenterPoints[0].Lat
+					maxLat := result.BasicInfo.Bounds.MaxLat
+					minLat := result.BasicInfo.Bounds.MinLat
+					maxLon := result.BasicInfo.Bounds.MaxLon
+					minLon := result.BasicInfo.Bounds.MinLon
+
 					// Xuất JSON cho province - 2 file riêng biệt
 					fmt.Println("\n=== XUẤT JSON - PROVINCE ===")
 
-					// File 1: Ways data
-					waysData := result.Ways
-
-					waysFileName := fmt.Sprintf("province_%s_%d_WAYS.json", strings.ReplaceAll(name, " ", "_"), relationID)
-					waysJsonData, err := json.MarshalIndent(waysData, "", "  ")
+					// Tạo polygon từ ways và nodes
+					fmt.Println("\n=== TẠO POLYGON - PROVINCE ===")
+					polygon, err := osmService.CreatePolygonFromWaysAndNodes(result.Ways, result.Nodes)
 					if err != nil {
-						fmt.Printf("Lỗi khi tạo JSON cho ways: %v\n", err)
+						fmt.Printf("Lỗi khi tạo polygon: %v\n", err)
 					} else {
-						err = os.WriteFile(waysFileName, waysJsonData, 0644)
-						if err != nil {
-							fmt.Printf("Lỗi khi ghi file ways JSON: %v\n", err)
-						} else {
-							fmt.Printf("Đã xuất Ways JSON cho '%s' vào file: %s\n", name, waysFileName)
-						}
-					}
+						fmt.Printf("Polygon tạo thành công với %d điểm\n", len(polygon))
 
-					// File 2: Nodes data
-					nodesData := result.Nodes
-
-					nodesFileName := fmt.Sprintf("province_%s_%d_NODES.json", strings.ReplaceAll(name, " ", "_"), relationID)
-					nodesJsonData, err := json.MarshalIndent(nodesData, "", "  ")
-					if err != nil {
-						fmt.Printf("Lỗi khi tạo JSON cho nodes: %v\n", err)
-					} else {
-						err = os.WriteFile(nodesFileName, nodesJsonData, 0644)
+						// Lưu polygon vào database
+						fmt.Println("Đang lưu polygon vào database...")
+						err = osmService.UpdatePolygonToDatabase(name, adminLevel, polygon)
 						if err != nil {
-							fmt.Printf("Lỗi khi ghi file nodes JSON: %v\n", err)
+							fmt.Printf("Lỗi khi lưu polygon vào database: %v\n", err)
 						} else {
-							fmt.Printf("Đã xuất Nodes JSON cho '%s' vào file: %s\n", name, nodesFileName)
+							fmt.Printf("Đã lưu polygon cho '%s'\n", name)
 						}
 					}
 
 					// Lưu province vào database
 					fmt.Println("\n=== LƯU DATABASE - PROVINCE ===")
-					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, provinceBoundaryString, wayAddress, LonCenter, LatCenter)
+					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter)
 					if err != nil {
 						fmt.Printf("Lỗi khi lưu province vào database: %v\n", err)
 					} else {
@@ -160,13 +145,12 @@ func main() {
 				fmt.Printf("Lỗi khi lấy dữ liệu OSM (ID %d): %v\n", commune.ID, err)
 				continue
 			}
-			wayAddressBytes, err := json.Marshal(communeDataResult.Ways)
-			if err != nil {
-				fmt.Printf("Lỗi khi chuyển đổi commune.Ways thành JSON: %v\n", err)
-				wayAddressBytes = []byte("")
-			}
-			wayAddress := string(wayAddressBytes)
-			communeBoundaryString := communeDataResult.Boundaries.JSONString
+
+			// Lấy boundary từ commune
+			maxLat := communeDataResult.BasicInfo.Bounds.MaxLat
+			minLat := communeDataResult.BasicInfo.Bounds.MinLat
+			maxLon := communeDataResult.BasicInfo.Bounds.MaxLon
+			minLon := communeDataResult.BasicInfo.Bounds.MinLon
 
 			var LonCenter float64
 			var LatCenter float64
@@ -179,11 +163,29 @@ func main() {
 			}
 			// Lưu commune
 			fmt.Println("\n=== LƯU DATABASE - COMMUNE ===")
-			err = osmService.UpdateStringBoundaryToDatabase(commune.Name, *commune.AdminLevel, communeBoundaryString, wayAddress, LonCenter, LatCenter)
+			err = osmService.UpdateStringBoundaryToDatabase(commune.Name, *commune.AdminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter)
 			if err != nil {
 				fmt.Printf("Lỗi khi lưu commune vào database: %v\n", err)
 			} else {
 				fmt.Printf("Đã lưu boundary string cho '%s' với level '%d'\n", commune.Name, commune.AdminLevel)
+			}
+
+			// Tạo polygon từ ways và nodes
+			fmt.Println("\n=== TẠO POLYGON - COMMUNE ===")
+			polygon, err := osmService.CreatePolygonFromWaysAndNodes(communeDataResult.Ways, communeDataResult.Nodes)
+			if err != nil {
+				fmt.Printf("Lỗi khi tạo polygon: %v\n", err)
+			} else {
+				fmt.Printf("Polygon tạo thành công với %d điểm\n", len(polygon))
+
+				// Lưu polygon vào database
+				fmt.Println("Đang lưu polygon vào database...")
+				err = osmService.UpdatePolygonToDatabase(commune.Name, 6, polygon)
+				if err != nil {
+					fmt.Printf("Lỗi khi lưu polygon vào database: %v\n", err)
+				} else {
+					fmt.Printf("Đã lưu polygon cho '%s'\n", commune.Name)
+				}
 			}
 		}
 

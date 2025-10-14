@@ -22,6 +22,7 @@ func main() {
 	}()
 
 	fmt.Println("=== BẮT ĐẦU CHƯƠNG TRÌNH ===")
+	fmt.Println("Starting OSM processing...")
 	fmt.Println("Debug: Chương trình đã bắt đầu chạy...")
 
 	_ = godotenv.Load(".env")
@@ -98,7 +99,42 @@ func main() {
 					wayAddress := string(wayAddressBytes)
 					LonCenter := result.CenterPoints[0].Lon
 					LatCenter := result.CenterPoints[0].Lat
-					// Lưu province
+					// Xuất JSON cho province - 2 file riêng biệt
+					fmt.Println("\n=== XUẤT JSON - PROVINCE ===")
+
+					// File 1: Ways data
+					waysData := result.Ways
+
+					waysFileName := fmt.Sprintf("province_%s_%d_WAYS.json", strings.ReplaceAll(name, " ", "_"), relationID)
+					waysJsonData, err := json.MarshalIndent(waysData, "", "  ")
+					if err != nil {
+						fmt.Printf("Lỗi khi tạo JSON cho ways: %v\n", err)
+					} else {
+						err = os.WriteFile(waysFileName, waysJsonData, 0644)
+						if err != nil {
+							fmt.Printf("Lỗi khi ghi file ways JSON: %v\n", err)
+						} else {
+							fmt.Printf("Đã xuất Ways JSON cho '%s' vào file: %s\n", name, waysFileName)
+						}
+					}
+
+					// File 2: Nodes data
+					nodesData := result.Nodes
+
+					nodesFileName := fmt.Sprintf("province_%s_%d_NODES.json", strings.ReplaceAll(name, " ", "_"), relationID)
+					nodesJsonData, err := json.MarshalIndent(nodesData, "", "  ")
+					if err != nil {
+						fmt.Printf("Lỗi khi tạo JSON cho nodes: %v\n", err)
+					} else {
+						err = os.WriteFile(nodesFileName, nodesJsonData, 0644)
+						if err != nil {
+							fmt.Printf("Lỗi khi ghi file nodes JSON: %v\n", err)
+						} else {
+							fmt.Printf("Đã xuất Nodes JSON cho '%s' vào file: %s\n", name, nodesFileName)
+						}
+					}
+
+					// Lưu province vào database
 					fmt.Println("\n=== LƯU DATABASE - PROVINCE ===")
 					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, provinceBoundaryString, wayAddress, LonCenter, LatCenter)
 					if err != nil {
@@ -109,16 +145,61 @@ func main() {
 				}
 			}
 		}
+
+		for _, commune := range result.Relations {
+			// Nếu là huyện thì skip
+			if *commune.AdminLevel != 6 {
+				continue
+			}
+
+			fmt.Printf("Tìm thấy commune: %s (admin_level: %d)\n", commune.Name, commune.AdminLevel)
+			fmt.Println("Đang lấy boundary string từ kết quả commune...")
+
+			communeDataResult, err := osmService.FetchAndProcessRelation(commune.ID)
+			if err != nil {
+				fmt.Printf("Lỗi khi lấy dữ liệu OSM (ID %d): %v\n", commune.ID, err)
+				continue
+			}
+			wayAddressBytes, err := json.Marshal(communeDataResult.Ways)
+			if err != nil {
+				fmt.Printf("Lỗi khi chuyển đổi commune.Ways thành JSON: %v\n", err)
+				wayAddressBytes = []byte("")
+			}
+			wayAddress := string(wayAddressBytes)
+			communeBoundaryString := communeDataResult.Boundaries.JSONString
+
+			var LonCenter float64
+			var LatCenter float64
+			if len(communeDataResult.CenterPoints) > 0 {
+				LonCenter = communeDataResult.CenterPoints[0].Lon
+				LatCenter = communeDataResult.CenterPoints[0].Lat
+			} else {
+				LonCenter = 0
+				LatCenter = 0
+			}
+			// Lưu commune
+			fmt.Println("\n=== LƯU DATABASE - COMMUNE ===")
+			err = osmService.UpdateStringBoundaryToDatabase(commune.Name, *commune.AdminLevel, communeBoundaryString, wayAddress, LonCenter, LatCenter)
+			if err != nil {
+				fmt.Printf("Lỗi khi lưu commune vào database: %v\n", err)
+			} else {
+				fmt.Printf("Đã lưu boundary string cho '%s' với level '%d'\n", commune.Name, commune.AdminLevel)
+			}
+		}
+
 		fmt.Printf("\n=== HOÀN THÀNH XỬ LÝ ===\n")
 		fmt.Printf("Đã xử lý thành công relation %d\n", relationID)
-		if result != nil && result.Boundaries != nil {
-			fmt.Printf("- Tổng tọa độ: %d\n", result.Boundaries.TotalCoordinates)
+		if result != nil {
+			if boundaries := result.Boundaries; boundaries != nil {
+				fmt.Printf("- Tổng tọa độ: %d\n", boundaries.TotalCoordinates)
+			}
 		}
 		if result != nil && result.Administrative != nil {
 			fmt.Printf("- Tỉnh/thành phố: %d\n", len(result.Administrative["provinces"]))
 			fmt.Printf("- Xã/phường: %d\n", len(result.Administrative["communes"]))
 			fmt.Printf("- Nodes: %d\n", len(result.Nodes))
 			fmt.Printf("- Ways: %d\n", len(result.Ways))
+			fmt.Printf("- Relations: %d\n", len(result.Relations))
 			fmt.Printf("- Center Points: %d\n", len(result.CenterPoints))
 
 			// Hiển thị chi tiết các entities

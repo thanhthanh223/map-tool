@@ -3,6 +3,8 @@ package services
 import (
 	"fmt"
 	"log"
+	"math"
+	"sort"
 	"tool-map/models"
 	"tool-map/repositories"
 
@@ -13,11 +15,26 @@ type OSMServiceInterface interface {
 	FetchAndProcessRelation(relationID int64) (*models.OSMProcessingResult, error)
 	GetBoundaryStringFromResult(result *models.OSMProcessingResult) string
 	UpdateStringBoundaryToDatabase(id string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64) error
+	CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64, error)
 }
 type OSMService struct {
 	client         *models.OSMApiClient
 	dmTTRepo       repositories.DmTTRepositoryInterface
 	dmPhuongXaRepo repositories.DmPhuongXaRepositoryInterface
+}
+
+// WayCoordinates represents a way with its coordinates
+type WayCoordinates struct {
+	ID      int64
+	Coords  [][]float64 // [lat, lon] pairs
+	NodeIDs []int64
+}
+
+// Connection represents a connection between ways
+type Connection struct {
+	WayID   int64
+	IsStart bool
+	Coords  [][]float64
 }
 
 // NewOSMService creates a new OSM service without database
@@ -101,21 +118,20 @@ func (s *OSMService) processOSMData(osm *models.OSM) (*models.OSMProcessingResul
 
 	// Convert OSM Nodes to Address format
 	var nodes []models.Address
-	var centerPoints []models.CenterPoint
+	var centerPoints []models.AdministrativeCenter
 	for _, node := range osm.Nodes {
 		nodes = append(nodes, node.ToAddress())
 
-		// Only treat nodes that contain a 'capital' tag as center points
-		isCenter := false
-		for _, tag := range node.Tags {
-			if tag.Key == "capital" {
-				isCenter = true
-				break
-			}
-		}
-		if isCenter {
+		// Logic: node có capital tag, place tag, hoặc population tag = center point
+		if node.IsCenterPoint() {
 			centerPoints = append(centerPoints, node.ToCenterPoint())
 		}
+	}
+
+	// Convert OSM Relations to RelationInfo format
+	var relations []models.RelationInfo
+	for _, relation := range osm.Relations {
+		relations = append(relations, relation.ToRelationInfo())
 	}
 
 	return &models.OSMProcessingResult{
@@ -127,6 +143,7 @@ func (s *OSMService) processOSMData(osm *models.OSM) (*models.OSMProcessingResul
 		Ways:            ways,
 		Nodes:           nodes,
 		CenterPoints:    centerPoints,
+		Relations:       relations,
 	}, nil
 }
 
@@ -423,4 +440,239 @@ func (s *OSMService) UpdateStringBoundaryToDatabase(name string, level int, boun
 	default:
 		return fmt.Errorf("level '%d' không được hỗ trợ", level)
 	}
+}
+
+// CreatePolygonFromWaysAndNodes tạo polygon từ ways và nodes
+func (s *OSMService) CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64, error) {
+	fmt.Printf("\n=== TẠO POLYGON TỪ WAYS VÀ NODES ===\n")
+
+	// Tạo node map từ OSM nodes
+	nodeMap := make(map[int64][]float64)
+	for _, node := range osm.Nodes {
+		nodeMap[node.ID] = []float64{node.Lat, node.Lon}
+	}
+
+	fmt.Printf("Created node map with %d nodes\n", len(nodeMap))
+
+	// Tạo way coordinates từ ways
+	var wayCoords []WayCoordinates
+	for _, way := range osm.Ways {
+		var coords [][]float64
+		var nodeIDs []int64
+
+		for _, nodeRef := range way.Nodes {
+			if coord, exists := nodeMap[nodeRef.Ref]; exists {
+				coords = append(coords, coord)
+				nodeIDs = append(nodeIDs, nodeRef.Ref)
+			}
+		}
+
+		if len(coords) >= 2 {
+			wayCoords = append(wayCoords, WayCoordinates{
+				ID:      way.ID,
+				Coords:  coords,
+				NodeIDs: nodeIDs,
+			})
+		}
+	}
+
+	fmt.Printf("Created %d way coordinates\n", len(wayCoords))
+
+	if len(wayCoords) == 0 {
+		return nil, fmt.Errorf("no valid ways found")
+	}
+
+	// Tạo polygon liền mạch
+	polygon, err := s.buildConnectedPath(wayCoords)
+	if err != nil {
+		fmt.Printf("Warning: buildConnectedPath failed: %v\n", err)
+		// Fallback: sử dụng convex hull
+		polygon = s.fallbackPolygonConstruction(wayCoords)
+		fmt.Printf("Using fallback convex hull with %d points\n", len(polygon))
+	}
+
+	fmt.Printf("Final polygon has %d coordinates\n", len(polygon))
+	return polygon, nil
+}
+
+// buildConnectedPath
+func (s *OSMService) buildConnectedPath(wayCoords []WayCoordinates) ([][]float64, error) {
+	if len(wayCoords) == 0 {
+		return nil, fmt.Errorf("no way coordinates provided")
+	}
+
+	// Tạo connection map
+	connectionMap := make(map[string][]Connection)
+	usedWays := make(map[int64]bool)
+	var result [][]float64
+
+	// Xây dựng connection map
+	for _, way := range wayCoords {
+		if len(way.Coords) >= 2 {
+			start := fmt.Sprintf("%.6f,%.6f", way.Coords[0][0], way.Coords[0][1])
+			end := fmt.Sprintf("%.6f,%.6f", way.Coords[len(way.Coords)-1][0], way.Coords[len(way.Coords)-1][1])
+
+			if connectionMap[start] == nil {
+				connectionMap[start] = []Connection{}
+			}
+			if connectionMap[end] == nil {
+				connectionMap[end] = []Connection{}
+			}
+
+			connectionMap[start] = append(connectionMap[start], Connection{
+				WayID:   way.ID,
+				IsStart: true,
+				Coords:  way.Coords,
+			})
+			connectionMap[end] = append(connectionMap[end], Connection{
+				WayID:   way.ID,
+				IsStart: false,
+				Coords:  way.Coords,
+			})
+		}
+	}
+
+	// Tìm điểm bắt đầu (chỉ kết nối với 1 way)
+	var startPoint string
+	for point, connections := range connectionMap {
+		if len(connections) == 1 {
+			startPoint = point
+			break
+		}
+	}
+
+	// Nếu không tìm thấy điểm đặc biệt, dùng điểm đầu tiên
+	if startPoint == "" && len(connectionMap) > 0 {
+		for point := range connectionMap {
+			startPoint = point
+			break
+		}
+	}
+
+	if startPoint == "" {
+		return nil, fmt.Errorf("no starting point found")
+	}
+
+	// Xây dựng đường dẫn liên tục
+	currentPoint := startPoint
+	for len(connectionMap) > 0 {
+		connections, exists := connectionMap[currentPoint]
+		if !exists || len(connections) == 0 {
+			break
+		}
+
+		// Tìm connection chưa được sử dụng
+		var connection *Connection
+		for i := range connections {
+			if !usedWays[connections[i].WayID] {
+				connection = &connections[i]
+				break
+			}
+		}
+
+		if connection == nil {
+			break
+		}
+
+		usedWays[connection.WayID] = true
+
+		coords := connection.Coords
+		if !connection.IsStart {
+			// Đảo ngược nếu cần
+			coords = s.reverseCoords(coords)
+		}
+
+		// Thêm coordinates (bỏ điểm cuối để tránh trùng lặp)
+		if len(coords) > 1 {
+			result = append(result, coords[:len(coords)-1]...)
+		}
+
+		// Tìm điểm tiếp theo
+		if len(coords) > 0 {
+			lastCoord := coords[len(coords)-1]
+			currentPoint = fmt.Sprintf("%.6f,%.6f", lastCoord[0], lastCoord[1])
+		}
+	}
+
+	// Thêm điểm cuối cùng
+	if len(wayCoords) > 0 && len(wayCoords[0].Coords) > 0 {
+		result = append(result, wayCoords[0].Coords[len(wayCoords[0].Coords)-1])
+	}
+
+	return result, nil
+}
+
+// reverseCoords đảo ngược thứ tự coordinates
+func (s *OSMService) reverseCoords(coords [][]float64) [][]float64 {
+	reversed := make([][]float64, len(coords))
+	for i, coord := range coords {
+		reversed[len(coords)-1-i] = coord
+	}
+	return reversed
+}
+
+// fallbackPolygonConstruction tạo convex hull như fallback
+func (s *OSMService) fallbackPolygonConstruction(wayCoords []WayCoordinates) [][]float64 {
+	// Thu thập tất cả coordinates
+	var allCoords [][]float64
+	for _, way := range wayCoords {
+		allCoords = append(allCoords, way.Coords...)
+	}
+
+	if len(allCoords) < 3 {
+		return allCoords
+	}
+
+	// Tạo convex hull (thuật toán đơn giản)
+	return s.convexHull(allCoords)
+}
+
+// convexHull tạo convex hull từ các điểm
+func (s *OSMService) convexHull(points [][]float64) [][]float64 {
+	if len(points) < 3 {
+		return points
+	}
+
+	// Tìm điểm bottom-most (và left-most nếu bằng nhau)
+	bottom := 0
+	for i := 1; i < len(points); i++ {
+		if points[i][0] < points[bottom][0] ||
+			(points[i][0] == points[bottom][0] && points[i][1] < points[bottom][1]) {
+			bottom = i
+		}
+	}
+
+	// Sắp xếp theo góc từ điểm bottom-most
+	bottomPoint := points[bottom]
+	points = append(points[:bottom], points[bottom+1:]...)
+
+	// Sắp xếp theo góc
+	sort.Slice(points, func(i, j int) bool {
+		angleI := s.angle(bottomPoint, points[i])
+		angleJ := s.angle(bottomPoint, points[j])
+		return angleI < angleJ
+	})
+
+	// Thêm điểm bottom-most vào đầu
+	hull := [][]float64{bottomPoint}
+
+	// Graham scan
+	for _, point := range points {
+		for len(hull) > 1 && s.cross(hull[len(hull)-2], hull[len(hull)-1], point) <= 0 {
+			hull = hull[:len(hull)-1]
+		}
+		hull = append(hull, point)
+	}
+
+	return hull
+}
+
+// angle tính góc từ p1 đến p2
+func (s *OSMService) angle(p1, p2 []float64) float64 {
+	return math.Atan2(p2[1]-p1[1], p2[0]-p1[0])
+}
+
+// cross tính cross product của 3 điểm
+func (s *OSMService) cross(p1, p2, p3 []float64) float64 {
+	return (p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0])
 }

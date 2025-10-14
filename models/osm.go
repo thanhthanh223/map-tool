@@ -103,14 +103,28 @@ type Address struct {
 	Lat float64 `json:"lat"`
 }
 
-// CenterPoint represents a central administrative point (like Hanoi center)
-type CenterPoint struct {
-	ID      int64   `json:"id"`      // OSM Node ID
-	Lon     float64 `json:"lon"`     // Longitude
-	Lat     float64 `json:"lat"`     // Latitude
-	Capital string  `json:"capital"` // capital tag
-	Name    string  `json:"name"`    // Primary name
+// AdministrativeCenter represents a center point for any administrative level
+type AdministrativeCenter struct {
+	ID           int64   `json:"id"`           // OSM Node ID
+	Lon          float64 `json:"lon"`          // Longitude
+	Lat          float64 `json:"lat"`          // Latitude
+	Name         string  `json:"name"`         // Primary name
+	OfficialName string  `json:"officialName"` // Official name (name:vi)
+	EnglishName  string  `json:"englishName"`  // English name (name:en)
+	Place        string  `json:"place"`        // place type (city, town, village, etc.)
+	AdminLevel   *int    `json:"adminLevel"`   // admin_level (4=tỉnh, 6=xã/phường)
+	Capital      *string `json:"capital"`      // capital tag (4=tỉnh, 6=xã/phường)
+	Level        string  `json:"level"`        // "province" or "commune" based on capital/admin_level
+	Population   *int64  `json:"population"`   // population
+	ISO3166_2    *string `json:"iso3166_2"`    // ISO3166-2 code
+	Website      *string `json:"website"`      // contact:website
+	Country      string  `json:"country"`      // country (default: "VN")
+	State        string  `json:"state"`        // state/province name
+	County       string  `json:"county"`       // county/district name
 }
+
+// CenterPoint is kept for backward compatibility
+type CenterPoint = AdministrativeCenter
 
 // ToAddress converts OSM Node to Address format
 func (node *Node) ToAddress() Address {
@@ -121,25 +135,96 @@ func (node *Node) ToAddress() Address {
 	}
 }
 
-// ToCenterPoint converts OSM Node to CenterPoint format (for administrative centers)
-func (node *Node) ToCenterPoint() CenterPoint {
+// IsCenterPoint checks if node is a center point (multiple criteria)
+func (node *Node) IsCenterPoint() bool {
+	for _, tag := range node.Tags {
+		// Case 1: Has capital tag
+		if tag.Key == "capital" {
+			return true
+		}
+		// Case 2: Has place tag with administrative values
+		if tag.Key == "place" {
+			switch tag.Value {
+			case "suburb", "town", "village", "city", "hamlet", "neighbourhood":
+				return true
+			}
+		}
+		// Case 3: Has population tag (usually indicates administrative center)
+		if tag.Key == "population" {
+			return true
+		}
+
+		// Case 4: khác "" and nil
+		if tag.Key != "" && tag.Value != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// ToCenterPoint converts OSM Node to AdministrativeCenter format
+func (node *Node) ToCenterPoint() AdministrativeCenter {
+	var adminLevel *int
 	var capital *string
+	var population *int64
+	var iso3166_2 *string
+	var website *string
 
 	// Extract tags
 	for _, tag := range node.Tags {
 		switch tag.Key {
+		case "admin_level":
+			if level, err := strconv.Atoi(tag.Value); err == nil {
+				adminLevel = &level
+			}
 		case "capital":
 			capital = &tag.Value
-
+		case "population":
+			if pop, err := strconv.ParseInt(tag.Value, 10, 64); err == nil {
+				population = &pop
+			}
+		case "ISO3166-2":
+			iso3166_2 = &tag.Value
+		case "contact:website":
+			website = &tag.Value
 		}
 	}
 
-	return CenterPoint{
-		ID:      node.ID,
-		Lon:     node.Lon,
-		Lat:     node.Lat,
-		Name:    node.GetName(),
-		Capital: *capital,
+	// Determine level based on capital or admin_level
+	level := ""
+	if capital != nil {
+		switch *capital {
+		case "4":
+			level = "province"
+		case "6":
+			level = "commune"
+		}
+	} else if adminLevel != nil {
+		switch *adminLevel {
+		case 4:
+			level = "province"
+		case 6:
+			level = "commune"
+		}
+	}
+
+	return AdministrativeCenter{
+		ID:           node.ID,
+		Lon:          node.Lon,
+		Lat:          node.Lat,
+		Name:         node.GetTagValue("name"),
+		OfficialName: node.GetTagValue("name:vi"),
+		EnglishName:  node.GetTagValue("name:en"),
+		Place:        node.GetTagValue("place"),
+		AdminLevel:   adminLevel,
+		Capital:      capital,
+		Level:        level,
+		Population:   population,
+		ISO3166_2:    iso3166_2,
+		Website:      website,
+		Country:      "VN", // Default to Vietnam
+		State:        "",   // Will be filled by parent context
+		County:       "",   // Will be filled by parent context
 	}
 }
 
@@ -157,6 +242,47 @@ func (way *Way) ToWayAddress() WayAddress {
 	}
 }
 
+// ToRelationInfo converts OSM Relation to RelationInfo format
+func (relation *Relation) ToRelationInfo() RelationInfo {
+	// Extract member references
+	var members []string
+	for _, member := range relation.Members {
+		members = append(members, fmt.Sprintf("%s:%d", member.Type, member.Ref))
+	}
+
+	// Extract tags
+	var adminLevel *int
+	var boundary *string
+
+	for _, tag := range relation.Tags {
+		switch tag.Key {
+		case "admin_level":
+			if level, err := strconv.Atoi(tag.Value); err == nil {
+				adminLevel = &level
+			}
+		case "boundary":
+			boundary = &tag.Value
+		}
+	}
+
+	return RelationInfo{
+		ID:           relation.ID,
+		Visible:      relation.Visible,
+		Version:      relation.Version,
+		Changeset:    relation.Changeset,
+		Timestamp:    relation.Timestamp,
+		User:         relation.User,
+		UID:          relation.UID,
+		Members:      members,
+		AdminLevel:   adminLevel,
+		Boundary:     boundary,
+		Name:         relation.GetTagValue("name"),
+		OfficialName: relation.GetTagValue("name:vi"),
+		Place:        relation.GetTagValue("place"),
+		Type:         relation.GetTagValue("type"),
+	}
+}
+
 // AdminEntity represents an administrative entity with level information
 type AdminEntity struct {
 	Type         string `json:"type"`         // "province" or "commune"
@@ -170,6 +296,24 @@ type AdminEntity struct {
 	Boundary     string `json:"boundary"`     // JSON string of boundary coordinates
 }
 
+// RelationInfo represents OSM Relation data (like Xã Ninh Giang)
+type RelationInfo struct {
+	ID           int64    `json:"id"`           // OSM Relation ID
+	Visible      bool     `json:"visible"`      // OSM visible attribute
+	Version      int      `json:"version"`      // OSM version
+	Changeset    int64    `json:"changeset"`    // OSM changeset
+	Timestamp    string   `json:"timestamp"`    // OSM timestamp
+	User         string   `json:"user"`         // OSM user
+	UID          int64    `json:"uid"`          // OSM user ID
+	Members      []string `json:"members"`      // Array of member references (ways/nodes)
+	AdminLevel   *int     `json:"adminLevel"`   // admin_level tag
+	Boundary     *string  `json:"boundary"`     // boundary tag
+	Name         string   `json:"name"`         // Primary name
+	OfficialName string   `json:"officialName"` // Official name
+	Place        string   `json:"place"`        // place type (town, etc.)
+	Type         string   `json:"type"`         // type (boundary, etc.)
+}
+
 // OSMProcessingResult contains processed OSM data
 type OSMProcessingResult struct {
 	BasicInfo       *BasicOSMInfo            `json:"basicInfo"`
@@ -179,7 +323,8 @@ type OSMProcessingResult struct {
 	JSONCoordinates string                   `json:"jsonCoordinates"`
 	Ways            []WayAddress             `json:"ways"`
 	Nodes           []Address                `json:"nodes"`        // OSM Nodes data
-	CenterPoints    []CenterPoint            `json:"centerPoints"` // Administrative center points
+	CenterPoints    []AdministrativeCenter   `json:"centerPoints"` // Administrative center points
+	Relations       []RelationInfo           `json:"relations"`    // OSM Relations data
 }
 
 // BasicOSMInfo contains basic OSM information

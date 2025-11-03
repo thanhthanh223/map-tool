@@ -179,3 +179,62 @@ CREATE TABLE DM_PHUONG_XA (
     -- ... các trường khác
 );
 ```
+
+# MinIO Integration
+
+## Cấu hình MinIO
+
+Tạo file `.env` với thông tin MinIO:
+
+```env
+# MinIO Configuration
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY_ID=minioadmin
+MINIO_SECRET_ACCESS_KEY=minioadmin
+MINIO_BUCKET_NAME=osm-data
+MINIO_USE_SSL=false
+```
+
+## Chạy MinIO với Docker
+
+```bash
+docker run -p 9000:9000 -p 9001:9001 \
+  --name minio \
+  -e "MINIO_ACCESS_KEY=minioadmin" \
+  -e "MINIO_SECRET_KEY=minioadmin" \
+  minio/minio server /data --console-address ":9001"
+```
+
+## Chức năng đã tích hợp
+
+1. **Kết nối MinIO**: Tự động kết nối khi khởi động app
+2. **Upload Polygon Data**: 
+   - Provinces: `provinces/{name}_{id}_polygon.json`
+   - Communes: `communes/{name}_{id}_polygon.json`
+3. **Bucket Management**: Tự động tạo bucket `osm-data` nếu chưa có
+
+## API MinIO Service
+
+```go
+// Upload file
+minioService.UploadFile("bucket", "object", "/path/to/file")
+
+// Upload bytes
+minioService.UploadBytes("bucket", "object", []byte("data"), "application/json")
+
+// Download file
+minioService.DownloadFile("bucket", "object", "/path/to/save")
+
+// Get object data
+data, err := minioService.GetObject("bucket", "object")
+
+// Generate presigned URL
+url, err := minioService.GetPresignedURL("bucket", "object", 24*time.Hour)
+```
+
+## Truy cập MinIO Console
+
+- URL: http://localhost:9001
+- Username: minioadmin
+- Password: minioadmin
+

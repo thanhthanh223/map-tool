@@ -12,11 +12,11 @@ type DmPhuongXa struct {
 	TrucThuocTinh  string     `json:"trucThuocTinh" gorm:"column:TRUC_THUOC_TINH"`
 	GhiChu         *string    `json:"-" gorm:"column:GHI_CHU"`
 	TrangThai      *int       `json:"trangThai" gorm:"column:TRANG_THAI"`
-	RegBy          string     `json:"regBy" gorm:"column:REG_BY"`
-	RegDate        *time.Time `json:"-" gorm:"column:REG_DATE;<-:create"`
-	LastUpdate     *time.Time `json:"-" gorm:"column:LAST_UPDATE"`
-	LastUpdateBy   string     `json:"lastUpdateBy" gorm:"column:LAST_UPDATE_BY"`
-	CloseDate      *time.Time `json:"-" gorm:"column:CLOSE_DATE"`
+	RegBy          string     `json:"regBy" gorm:"column:NGUOI_TAO"`
+	RegDate        *time.Time `json:"-" gorm:"column:NGAY_TAO;<-:create"`
+	LastUpdate     *time.Time `json:"-" gorm:"column:NGAY_SUA"`
+	LastUpdateBy   string     `json:"lastUpdateBy" gorm:"column:NGUOI_SUA"`
+	CloseDate      *time.Time `json:"-" gorm:"column:NGAY_DONG"`
 	AddressBase    `gorm:"embedded" json:",inline"`
 }
 

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+	"tool-map/repositories"
 	"tool-map/services"
 
 	oracle "github.com/godoes/gorm-oracle"
@@ -29,6 +31,10 @@ func main() {
 	// Kết nối Oracle database
 	db := connectDB()
 	fmt.Println("Đã kết nối Oracle database")
+
+	// repo
+	dmTTRepo := repositories.NewDmTTRepository(db)
+	dmPXRepo := repositories.NewDmPhuongXaRepository(db)
 
 	// Tạo OSM service với database
 	osmService := services.NewOSMServiceWithDB(db)
@@ -73,7 +79,8 @@ func main() {
 		fmt.Printf("KẾT QUẢ XỬ LÝ OSM DATA\n")
 		fmt.Printf("%s\n", strings.Repeat("=", 60))
 
-		// Nếu có provinces, thao tác thêm cho từng commune trong mỗi province
+		var provinceName string
+		// Nếu có provinces, thao tác thêm cho từng commune trong m	ỗi province
 		if result.Administrative != nil {
 			if provinces, exists := result.Administrative["provinces"]; exists && len(provinces) > 0 {
 				for _, province := range provinces {
@@ -86,6 +93,7 @@ func main() {
 						province.Name = strings.TrimSpace(province.Name)
 					}
 					name := province.Name
+					provinceName = name
 					adminLevel := province.AdminLevel
 					fmt.Printf("Tìm thấy province: %s (admin_level: %d)\n", name, adminLevel)
 					fmt.Println("Đang lấy boundary string từ kết quả province...")
@@ -98,30 +106,65 @@ func main() {
 					maxLon := result.BasicInfo.Bounds.MaxLon
 					minLon := result.BasicInfo.Bounds.MinLon
 
-					// Xuất JSON cho province - 2 file riêng biệt
-					fmt.Println("\n=== XUẤT JSON - PROVINCE ===")
-
 					// Tạo polygon từ ways và nodes
 					fmt.Println("\n=== TẠO POLYGON - PROVINCE ===")
-					polygon, err := osmService.CreatePolygonFromWaysAndNodes(result.Ways, result.Nodes)
+					polygons, err := osmService.CreatePolygonFromWaysAndNodes(result.Ways, result.Nodes)
 					if err != nil {
 						fmt.Printf("Lỗi khi tạo polygon: %v\n", err)
 					} else {
-						fmt.Printf("Polygon tạo thành công với %d điểm\n", len(polygon))
+						fmt.Printf("Tạo thành công %d polygon(s)\n", len(polygons))
+						// Tạo mảng để lưu các URL MinIO sau khi upload polygons
+						var polygonUrls []string
 
-						// Lưu polygon vào database
-						fmt.Println("Đang lưu polygon vào database...")
-						err = osmService.UpdatePolygonToDatabase(name, adminLevel, polygon)
+						// Xử lý từng polygon
+						for i, polygon := range polygons {
+							fmt.Printf("Processing polygon %d with %d points\n", i+1, len(polygon))
+
+							// Upload polygon data lên MinIO
+							fmt.Println("Đang upload polygon lên MinIO...")
+							polygonJSON, err := json.Marshal(polygon)
+							if err != nil {
+								fmt.Printf("Lỗi khi marshal polygon JSON: %v\n", err)
+								continue
+							}
+
+							// Tạo tên file khác nhau cho mỗi polygon
+							var objectName string
+							if len(polygons) == 1 {
+								objectName = fmt.Sprintf("provinces_%d_polygon.txt", relationID)
+							} else {
+								objectName = fmt.Sprintf("provinces_%d_polygon_%d.txt", relationID, i+1)
+							}
+
+							uploadPolygonURL, err := services.UploadPolygonData(polygonJSON, objectName)
+							if err != nil {
+								fmt.Printf("Lỗi khi upload polygon lên MinIO: %v\n", err)
+								continue
+							}
+
+							// Thêm url vào mảng lưu trữ
+							polygonUrls = append(polygonUrls, uploadPolygonURL)
+						}
+
+						// Convert mảng các url thành string dạng JSON
+						polygonUrlsJSON, err := json.Marshal(polygonUrls)
 						if err != nil {
-							fmt.Printf("Lỗi khi lưu polygon vào database: %v\n", err)
+							fmt.Printf("Lỗi khi convert polygon URLs array sang string: %v\n", err)
 						} else {
-							fmt.Printf("Đã lưu polygon cho '%s'\n", name)
+							// Lưu string mảng các url vào database bằng hàm UpdatePolygonToDatabase
+							fmt.Println("Đang lưu mảng polygon URLs vào database...")
+							err = osmService.UpdatePolygonToDatabase(name, adminLevel, string(polygonUrlsJSON), "")
+							if err != nil {
+								fmt.Printf("Lỗi khi lưu mảng polygon URLs vào database: %v\n", err)
+							} else {
+								fmt.Printf("Đã lưu mảng polygon URLs cho '%s'\n", name)
+							}
 						}
 					}
 
 					// Lưu province vào database
 					fmt.Println("\n=== LƯU DATABASE - PROVINCE ===")
-					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter)
+					err = osmService.UpdateStringBoundaryToDatabase(name, adminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter, "")
 					if err != nil {
 						fmt.Printf("Lỗi khi lưu province vào database: %v\n", err)
 					} else {
@@ -131,14 +174,30 @@ func main() {
 			}
 		}
 
+		TinhThanhInDb, err := dmTTRepo.GetByName(provinceName)
+		if err != nil {
+			fmt.Printf("Lỗi khi lấy dữ liệu tỉnh/thành phố từ database: %v\n", err)
+			return
+		}
+		if TinhThanhInDb == nil {
+			fmt.Printf("Không tìm thấy tỉnh/thành phố '%s' trong database\n", provinceName)
+			return
+		}
+
 		for _, commune := range result.Relations {
 			// Nếu là huyện thì skip
 			if *commune.AdminLevel != 6 {
 				continue
 			}
 
-			fmt.Printf("Tìm thấy commune: %s (admin_level: %d)\n", commune.Name, commune.AdminLevel)
+			fmt.Printf("Tìm thấy commune: %s (admin_level: %d) trong database\n", commune.Name, commune.AdminLevel)
 			fmt.Println("Đang lấy boundary string từ kết quả commune...")
+
+			px, err := dmPXRepo.GetByName(commune.Name, TinhThanhInDb.MaTT)
+			if err != nil || px == nil || px.MaPhuongXa == "" {
+				fmt.Printf("Không tìm thấy phường xã '%s' trong database\n", commune.Name)
+				continue
+			}
 
 			communeDataResult, err := osmService.FetchAndProcessRelation(commune.ID)
 			if err != nil {
@@ -163,7 +222,7 @@ func main() {
 			}
 			// Lưu commune
 			fmt.Println("\n=== LƯU DATABASE - COMMUNE ===")
-			err = osmService.UpdateStringBoundaryToDatabase(commune.Name, *commune.AdminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter)
+			err = osmService.UpdateStringBoundaryToDatabase(commune.Name, *commune.AdminLevel, maxLat, minLat, maxLon, minLon, LonCenter, LatCenter, TinhThanhInDb.MaTT)
 			if err != nil {
 				fmt.Printf("Lỗi khi lưu commune vào database: %v\n", err)
 			} else {
@@ -172,21 +231,37 @@ func main() {
 
 			// Tạo polygon từ ways và nodes
 			fmt.Println("\n=== TẠO POLYGON - COMMUNE ===")
-			polygon, err := osmService.CreatePolygonFromWaysAndNodes(communeDataResult.Ways, communeDataResult.Nodes)
+			polygons, err := osmService.CreatePolygonFromWaysAndNodes(communeDataResult.Ways, communeDataResult.Nodes)
 			if err != nil {
 				fmt.Printf("Lỗi khi tạo polygon: %v\n", err)
 			} else {
-				fmt.Printf("Polygon tạo thành công với %d điểm\n", len(polygon))
+				fmt.Printf("Tạo thành công %d polygon(s) cho commune\n", len(polygons))
 
-				// Lưu polygon vào database
-				fmt.Println("Đang lưu polygon vào database...")
-				err = osmService.UpdatePolygonToDatabase(commune.Name, 6, polygon)
-				if err != nil {
-					fmt.Printf("Lỗi khi lưu polygon vào database: %v\n", err)
-				} else {
-					fmt.Printf("Đã lưu polygon cho '%s'\n", commune.Name)
+				// Xử lý từng polygon
+				for i, polygon := range polygons {
+					fmt.Printf("Processing commune polygon %d with %d points\n", i+1, len(polygon))
+
+					// Lưu polygon vào database (chỉ polygon đầu tiên)
+					if i == 0 {
+						fmt.Println("Đang lưu polygon chính vào database...")
+						polygonJSON, err := json.Marshal(polygon)
+						if err != nil {
+							fmt.Printf("Lỗi khi marshal polygon JSON: %v\n", err)
+						} else {
+							// lưu polygon vào database là data cho phường xã
+							err = osmService.UpdatePolygonToDatabase(commune.Name, 6, string(polygonJSON), TinhThanhInDb.MaTT)
+							if err != nil {
+								fmt.Printf("Lỗi khi lưu polygon vào database: %v\n", err)
+							} else {
+								fmt.Printf("Đã lưu polygon chính cho '%s'\n", commune.Name)
+							}
+						}
+					} else {
+						fmt.Printf("Commune polygon %d được tạo nhưng không lưu vào DB (chỉ lưu polygon chính)\n", i+1)
+					}
 				}
 			}
+
 		}
 
 		fmt.Printf("\n=== HOÀN THÀNH XỬ LÝ ===\n")
@@ -222,6 +297,14 @@ func main() {
 			}
 
 		}
+	}
+
+	fmt.Println("Đang cập nhật tọa độ trung tâm của xã/phường...")
+	err = osmService.UpdateLatLonCenterForPhuongXa()
+	if err != nil {
+		fmt.Printf("Lỗi khi cập nhật tọa độ trung tâm của xã/phường: %v\n", err)
+	} else {
+		fmt.Println("Đã cập nhật tọa độ trung tâm của xã/phường thành công")
 	}
 
 	fmt.Println("=== KẾT THÚC CHƯƠNG TRÌNH ===")

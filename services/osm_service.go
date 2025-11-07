@@ -729,6 +729,11 @@ func (s *OSMService) UpdatePolygonToDatabase(name string, level int, polygonData
 		if tt == nil {
 			return fmt.Errorf("không tìm thấy tỉnh/thành phố '%s' trong database", name)
 		}
+
+		if err = HSet(redisHashProvincePolygon, tt.MaTT, polygonData); err != nil {
+			return fmt.Errorf("không thể lưu polygon data vào redis: %w", err)
+		}
+
 		return s.dmTTRepo.UpdatePolygonDataByMaTT(tt.MaTT, &polygonData)
 	case 6: // Xã/phường
 		// TODO: Implement for communes if needed
@@ -739,6 +744,11 @@ func (s *OSMService) UpdatePolygonToDatabase(name string, level int, polygonData
 		if px == nil {
 			return fmt.Errorf("không tìm thấy xã/phường '%s' trong database", name)
 		}
+
+		if err = HSet(redisHashWardPolygon, px.MaPhuongXa, polygonData); err != nil {
+			return fmt.Errorf("không thể lưu polygon data vào redis: %w", err)
+		}
+
 		return s.dmPhuongXaRepo.UpdatePolygonDataByMaPhuongXa(px.MaPhuongXa, &polygonData)
 	default:
 		return fmt.Errorf("level '%d' không được hỗ trợ", level)

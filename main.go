@@ -28,6 +28,9 @@ func main() {
 
 	_ = godotenv.Load(".env")
 
+	// Khởi tạo Redis (nếu được cấu hình qua env)
+	services.InitRedis()
+
 	// Kết nối Oracle database
 	db := connectDB()
 	fmt.Println("Đã kết nối Oracle database")

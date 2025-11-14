@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="bf1cafe1-6ba6-4e20-9584-71220e1cffbc" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/list_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1844412_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1873490_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1874283_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1875748_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1875866_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1875887_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1884018_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1884034_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1885367_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1887959_polygon_1.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1887959_polygon_2.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1887959_polygon_3.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1887959_polygon_4.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1887959_polygon_5.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1890793_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1891418_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1891483_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1895630_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1898458_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1898509_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1898590_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1898961_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1900963_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1901032_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902682_polygon_1.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902682_polygon_2.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902690_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902930_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902947_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1902967_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903291_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903322_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903340_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903400_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903418_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1903516_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1904421_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_1973756_polygon.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/polygon/provinces_5522596_polygon.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/id.txt" beforeDir="false" afterPath="$PROJECT_DIR$/id.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/osm_service.go" beforeDir="false" afterPath="$PROJECT_DIR$/services/osm_service.go" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 4
+}]]></component>
+  <component name="ProjectId" id="35S3BpIism63isK99CBOL7XQUyL" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "C:/Users/phuon"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="bf1cafe1-6ba6-4e20-9584-71220e1cffbc" name="Changes" comment="" />
+      <created>1763089515448</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1763089515448</updated>
+    </task>
+    <servers />
+  </component>
+</project>

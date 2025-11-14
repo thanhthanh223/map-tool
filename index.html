@@ -77,65 +77,73 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Đọc polygon từ file hanoi_polygon.txt và vẽ lên bản đồ
-        fetch('provinces_1902682_polygon.txt')
+        // Đọc danh sách polygon từ file list_polygon.txt và vẽ lên bản đồ
+        fetch('list_polygon.txt')
             .then(resp => resp.text())
             .then(text => {
                 try {
-                    let polygonCoords = JSON.parse(text); // [[lat, lon], ...]
-                    if (Array.isArray(polygonCoords) && polygonCoords.length > 2) {
+                    const polygons = JSON.parse(text); // Mảng chứa các polygon
+                    if (!Array.isArray(polygons)) {
+                        console.error('Dữ liệu không phải là mảng');
+                        return;
+                    }
+
+                    console.log(`Đã đọc ${polygons.length} polygon từ file list_polygon.txt`);
+
+                    // Màu sắc cho từng polygon
+                    const colors = ['blue', 'red', 'green', 'orange', 'purple', 'cyan', 'magenta'];
+                    const polygonLayers = [];
+
+                    // Lặp qua từng polygon và vẽ lên bản đồ
+                    polygons.forEach((polygonCoords, index) => {
+                        if (!Array.isArray(polygonCoords) || polygonCoords.length < 3) {
+                            console.warn(`Polygon ${index + 1} không hợp lệ, bỏ qua`);
+                            return;
+                        }
+
                         // Đảm bảo polygon đóng kín
                         const first = polygonCoords[0];
-                        const last  = polygonCoords[polygonCoords.length - 1];
-                        const isClosed = Math.abs(first[0]-last[0]) < 1e-6 && Math.abs(first[1]-last[1]) < 1e-6;
-                        if (!isClosed) polygonCoords = [...polygonCoords, first];
+                        const last = polygonCoords[polygonCoords.length - 1];
+                        const isClosed = Math.abs(first[0] - last[0]) < 1e-6 && Math.abs(first[1] - last[1]) < 1e-6;
+                        if (!isClosed) {
+                            polygonCoords = [...polygonCoords, first];
+                        }
 
+                        // Vẽ polygon với màu khác nhau
+                        const color = colors[index % colors.length];
                         const poly = L.polygon(polygonCoords, {
-                            color: 'blue',
+                            color: color,
                             weight: 4,
-                            fillColor: 'transparent',
-                            fillOpacity: 0,
+                            fillColor: color,
+                            fillOpacity: 0.2,
                             opacity: 0.9
                         }).addTo(map);
 
-                        const bounds = poly.getBounds();
-                        map.fitBounds(bounds.pad(0.1));
+                        // Thêm popup hiển thị thông tin polygon
+                        poly.bindPopup(`
+                            <div class="info">
+                                <h3>Polygon ${index + 1}</h3>
+                                <p><strong>Màu:</strong> ${color}</p>
+                                <p><strong>Số điểm:</strong> ${polygonCoords.length}</p>
+                            </div>
+                        `);
+
+                        // Lưu layer để fit bounds
+                        polygonLayers.push(poly);
+                    });
+
+                    // Fit bản đồ để hiển thị tất cả polygon
+                    if (polygonLayers.length > 0) {
+                        const group = new L.featureGroup(polygonLayers);
+                        map.fitBounds(group.getBounds().pad(0.1));
                     }
+
+                    console.log(`Đã vẽ ${polygonLayers.length} polygon lên bản đồ`);
                 } catch (e) {
-                    console.error('Không thể parse hanoi_polygon.txt:', e);
+                    console.error('Không thể parse list_polygon.txt:', e);
                 }
             })
-            .catch(err => console.error('Lỗi đọc hanoi_polygon.txt:', err));
-
-
-            fetch('provinces_1902682_polygon_1.txt')
-            .then(resp => resp.text())
-            .then(text => {
-                try {
-                    let polygonCoords = JSON.parse(text); // [[lat, lon], ...]
-                    if (Array.isArray(polygonCoords) && polygonCoords.length > 2) {
-                        // Đảm bảo polygon đóng kín
-                        const first = polygonCoords[0];
-                        const last  = polygonCoords[polygonCoords.length - 1];
-                        const isClosed = Math.abs(first[0]-last[0]) < 1e-6 && Math.abs(first[1]-last[1]) < 1e-6;
-                        if (!isClosed) polygonCoords = [...polygonCoords, first];
-
-                        const poly = L.polygon(polygonCoords, {
-                            color: 'blue',
-                            weight: 4,
-                            fillColor: 'transparent',
-                            fillOpacity: 0,
-                            opacity: 0.9
-                        }).addTo(map);
-
-                        const bounds = poly.getBounds();
-                        map.fitBounds(bounds.pad(0.1));
-                    }
-                } catch (e) {
-                    console.error('Không thể parse hanoi_polygon.txt:', e);
-                }
-            })
-            .catch(err => console.error('Lỗi đọc hanoi_polygon.txt:', err));
+            .catch(err => console.error('Lỗi đọc list_polygon.txt:', err));
 
         // Đánh dấu . đỏ các điểm này trên bản đồ
         const redPoints = [

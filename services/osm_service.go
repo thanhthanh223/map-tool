@@ -1,17 +1,23 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 	"tool-map/entities"
 	"tool-map/models"
 	"tool-map/repositories"
 	"tool-map/util"
 
+	"github.com/minio/minio-go/v7"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +29,7 @@ type OSMServiceInterface interface {
 	UpdatePolygonToDatabase(id string, level int, polygonData [][][]float64, maTT string) error
 	FindCommuneByCoordinate(provinceCode string, lat, lon float64) (*entities.DmPhuongXa, error)
 	UpdateLatLonCenterForPhuongXa() error
+	DownloadAllPolygonFiles() (int, error)
 }
 type OSMService struct {
 	client         *models.OSMApiClient
@@ -794,4 +801,69 @@ func (s *OSMService) UpdateLatLonCenterForPhuongXa() error {
 		log.Printf("Cập nhật tọa độ trung tâm của xã/phường %s: %f, %f\n", phuongXa.MaPhuongXa, latCenter, lonCenter)
 	}
 	return nil
+}
+
+// DownloadAllPolygonFiles downloads all polygon files from MinIO and saves them to the polygon directory
+func (s *OSMService) DownloadAllPolygonFiles() (int, error) {
+	if err := ensureMinioClient(); err != nil {
+		return 0, fmt.Errorf("failed to initialize MinIO client: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Get bucket name from env or use default
+	bucket := os.Getenv("MINIO_BUCKET_NAME")
+	if bucket == "" {
+		bucket = "kbtt-htn-media"
+	}
+
+	// Create polygon directory if it doesn't exist
+	polygonDir := "polygon"
+	if err := os.MkdirAll(polygonDir, 0755); err != nil {
+		return 0, fmt.Errorf("failed to create polygon directory: %w", err)
+	}
+
+	// List all objects in bucket (filter by polygon files)
+	objectsCh := minioClient.ListObjects(ctx, bucket, minio.ListObjectsOptions{
+		Recursive: true,
+	})
+
+	downloadedCount := 0
+	for object := range objectsCh {
+		if object.Err != nil {
+			continue
+		}
+
+		// Only download files that contain "polygon" in the name
+		if !strings.Contains(strings.ToLower(object.Key), "polygon") {
+			continue
+		}
+
+		// Download the file
+		data, err := DownloadFile(bucket, object.Key)
+		if err != nil {
+			log.Printf("Failed to download %s: %v", object.Key, err)
+			continue
+		}
+
+		// Get filename from object key (handle paths)
+		fileName := filepath.Base(object.Key)
+		if fileName == "" || fileName == "." {
+			fileName = object.Key
+		}
+
+		// Save to polygon directory
+		filePath := filepath.Join(polygonDir, fileName)
+		if err := os.WriteFile(filePath, data, 0644); err != nil {
+			log.Printf("Failed to save file %s: %v", filePath, err)
+			continue
+		}
+
+		log.Printf("Downloaded: %s (%d bytes)", filePath, len(data))
+		downloadedCount++
+	}
+
+	log.Printf("Downloaded %d polygon files to %s directory", downloadedCount, polygonDir)
+	return downloadedCount, nil
 }

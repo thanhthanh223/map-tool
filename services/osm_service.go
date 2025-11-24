@@ -23,6 +23,7 @@ import (
 
 type OSMServiceInterface interface {
 	FetchAndProcessRelation(relationID int64) (*models.OSMProcessingResult, error)
+	CreatePointCenterPhuongXaWhenCenterNull() error
 	GetBoundaryStringFromResult(result *models.OSMProcessingResult) string
 	UpdateStringBoundaryToDatabase(id string, level int, boundaryString, wayAddress string, lonCenter, latCenter float64, maTT string) error
 	CreatePolygonFromWaysAndNodes(osm *models.OSM) ([][]float64, error)
@@ -318,15 +319,16 @@ func (s *OSMService) processAdministrativeEntities(osm *models.OSM) (map[string]
 		}
 
 		// Classify by level - Relation thường dùng admin_level
-		if adminLevel == 4 {
+		switch adminLevel {
+		case 4:
 			entity.Type = "province"
 			administrativeData["provinces"] = append(administrativeData["provinces"], entity)
 			fmt.Printf("  -> Added as PROVINCE (admin_level=4)\n")
-		} else if adminLevel == 6 {
+		case 6:
 			entity.Type = "commune"
 			administrativeData["communes"] = append(administrativeData["communes"], entity)
 			fmt.Printf("  -> Added as COMMUNE (admin_level=6)\n")
-		} else {
+		default:
 			fmt.Printf("  -> Skipped (admin_level=%d not recognized)\n", adminLevel)
 		}
 	}
@@ -354,15 +356,16 @@ func (s *OSMService) processAdministrativeEntities(osm *models.OSM) (map[string]
 		}
 
 		// Classify by capital level - Node thường dùng capital level
-		if capitalLevel == 4 {
+		switch capitalLevel {
+		case 4:
 			entity.Type = "province"
 			administrativeData["provinces"] = append(administrativeData["provinces"], entity)
 			fmt.Printf("  -> Added as PROVINCE (capital=4)\n")
-		} else if capitalLevel == 6 {
+		case 6:
 			entity.Type = "commune"
 			administrativeData["communes"] = append(administrativeData["communes"], entity)
 			fmt.Printf("  -> Added as COMMUNE (capital=6)\n")
-		} else {
+		default:
 			fmt.Printf("  -> Skipped (capital level %d not recognized)\n", capitalLevel)
 		}
 	}
@@ -514,18 +517,24 @@ func (s *OSMService) CreatePolygonFromWaysAndNodes(ways []models.WayAddress, nod
 		allPolygons = append(allPolygons, closedPolygons...)
 	}
 
-	// Dùng logic cũ để build polygon từ các wayCoords chưa đóng
+	// Tìm các nhóm ways riêng biệt và tạo polygon cho mỗi nhóm
 	if len(wayCoords) > 0 {
-		polygon, err := s.buildConnectedPath(wayCoords)
-		if err != nil {
-			fmt.Printf("Warning: buildConnectedPath failed: %v\n", err)
-			// Fallback: sử dụng convex hull từ ways & node
-			polygon = s.fallbackPolygonConstruction(wayCoords)
-			fmt.Printf("Using fallback convex hull with %d points\n", len(polygon))
-		}
+		connectedGroups := s.findConnectedWayGroups(wayCoords)
+		fmt.Printf("Tìm thấy %d nhóm ways riêng biệt\n", len(connectedGroups))
 
-		if len(polygon) > 0 {
-			allPolygons = append(allPolygons, polygon)
+		for groupIdx, group := range connectedGroups {
+			fmt.Printf("  Nhóm %d: %d ways\n", groupIdx+1, len(group))
+			polygon, err := s.buildConnectedPath(group)
+			if err != nil {
+				fmt.Printf("Warning: buildConnectedPath failed cho nhóm %d: %v\n", groupIdx+1, err)
+				// Fallback: sử dụng convex hull từ ways & node
+				polygon = s.fallbackPolygonConstruction(group)
+				fmt.Printf("Using fallback convex hull với %d points cho nhóm %d\n", len(polygon), groupIdx+1)
+			}
+
+			if len(polygon) > 0 {
+				allPolygons = append(allPolygons, polygon)
+			}
 		}
 	}
 
@@ -655,6 +664,84 @@ func (s *OSMService) reverseCoords(coords [][]float64) [][]float64 {
 	return reversed
 }
 
+// findConnectedWayGroups tìm các nhóm ways riêng biệt (connected components)
+// Mỗi nhóm là các ways có thể nối với nhau tại node chung
+func (s *OSMService) findConnectedWayGroups(wayCoords []WayCoordinates) [][]WayCoordinates {
+	if len(wayCoords) == 0 {
+		return nil
+	}
+
+	// Tạo map: point -> []way indices
+	pointToWays := make(map[string][]int)
+	for i, way := range wayCoords {
+		if len(way.Coords) < 2 {
+			continue
+		}
+		start := fmt.Sprintf("%.6f,%.6f", way.Coords[0][0], way.Coords[0][1])
+		end := fmt.Sprintf("%.6f,%.6f", way.Coords[len(way.Coords)-1][0], way.Coords[len(way.Coords)-1][1])
+
+		pointToWays[start] = append(pointToWays[start], i)
+		pointToWays[end] = append(pointToWays[end], i)
+	}
+
+	// Tìm các connected components bằng DFS
+	visited := make(map[int]bool)
+	var groups [][]WayCoordinates
+
+	for i := 0; i < len(wayCoords); i++ {
+		if visited[i] {
+			continue
+		}
+
+		// Tìm tất cả ways trong cùng component
+		component := make(map[int]bool)
+		s.dfsWayComponent(i, wayCoords, pointToWays, visited, component)
+
+		// Tạo group từ component
+		group := make([]WayCoordinates, 0, len(component))
+		for wayIdx := range component {
+			group = append(group, wayCoords[wayIdx])
+		}
+
+		if len(group) > 0 {
+			groups = append(groups, group)
+		}
+	}
+
+	return groups
+}
+
+// dfsWayComponent dùng DFS để tìm tất cả ways trong cùng connected component
+func (s *OSMService) dfsWayComponent(wayIdx int, wayCoords []WayCoordinates, pointToWays map[string][]int, visited map[int]bool, component map[int]bool) {
+	if visited[wayIdx] {
+		return
+	}
+
+	visited[wayIdx] = true
+	component[wayIdx] = true
+
+	way := wayCoords[wayIdx]
+	if len(way.Coords) < 2 {
+		return
+	}
+
+	// Lấy các điểm đầu/cuối của way này
+	start := fmt.Sprintf("%.6f,%.6f", way.Coords[0][0], way.Coords[0][1])
+	end := fmt.Sprintf("%.6f,%.6f", way.Coords[len(way.Coords)-1][0], way.Coords[len(way.Coords)-1][1])
+
+	// Tìm các ways khác kết nối tại các điểm này
+	connectedPoints := []string{start, end}
+	for _, point := range connectedPoints {
+		if connectedWays, exists := pointToWays[point]; exists {
+			for _, connectedWayIdx := range connectedWays {
+				if !visited[connectedWayIdx] {
+					s.dfsWayComponent(connectedWayIdx, wayCoords, pointToWays, visited, component)
+				}
+			}
+		}
+	}
+}
+
 // fallbackPolygonConstruction tạo convex hull như fallback
 func (s *OSMService) fallbackPolygonConstruction(wayCoords []WayCoordinates) [][]float64 {
 	// Thu thập tất cả coordinates
@@ -772,35 +859,7 @@ func (s *OSMService) FindCommuneByCoordinate(provinceCode string, lat, lon float
 }
 
 func (s *OSMService) UpdateLatLonCenterForPhuongXa() error {
-	PhuongXaUpdate, err := s.dmPhuongXaRepo.GetWhenHavePolygonAndCenterNull()
-	if err != nil {
-		return fmt.Errorf("không thể lấy dữ liệu xã/phường từ database: %w", err)
-	}
-	for _, phuongXa := range PhuongXaUpdate {
-		polygonData := phuongXa.Polygon
-		if polygonData == nil {
-			continue
-		}
-		// Chuyển đổi polygonData (kiểu *string, lưu JSON dạng [[[lat,lon],...],...]) thành [][][2]float64,
-		// nhưng lấy polygon đầu tiên và tạo [][2]float64.
-
-		var polygons [][2]float64
-		err := json.Unmarshal([]byte(*polygonData), &polygons)
-		if err != nil || len(polygons) == 0 {
-			log.Printf("Không thể parse polygonData cho phường/xã %s: %v\n", phuongXa.MaPhuongXa, err)
-			continue
-		}
-		// Lấy polygon đầu tiên để xử lý centroid
-		latCenter, lonCenter := util.PolygonInteriorCentroid(polygons)
-
-		err = s.dmPhuongXaRepo.UpdateLatLonCenterByMaPhuongXa(phuongXa.MaPhuongXa, &latCenter, &lonCenter)
-		if err != nil {
-			return fmt.Errorf("không thể cập nhật tọa độ trung tâm của xã/phường: %w", err)
-		}
-
-		log.Printf("Cập nhật tọa độ trung tâm của xã/phường %s: %f, %f\n", phuongXa.MaPhuongXa, latCenter, lonCenter)
-	}
-	return nil
+	return s.CreatePointCenterPhuongXaWhenCenterNull()
 }
 
 // DownloadAllPolygonFiles downloads all polygon files from MinIO and saves them to the polygon directory
@@ -866,4 +925,109 @@ func (s *OSMService) DownloadAllPolygonFiles() (int, error) {
 
 	log.Printf("Downloaded %d polygon files to %s directory", downloadedCount, polygonDir)
 	return downloadedCount, nil
+}
+
+func (s *OSMService) CreatePointCenterPhuongXaWhenCenterNull() error {
+	if s.dmPhuongXaRepo == nil {
+		return fmt.Errorf("database repositories not initialized, use NewOSMServiceWithDB()")
+	}
+
+	phuongXaList, err := s.dmPhuongXaRepo.GetWhenHavePolygonAndCenterNull()
+	if err != nil {
+		return fmt.Errorf("không thể lấy dữ liệu xã/phường từ database: %w", err)
+	}
+
+	updated := 0
+	for _, phuongXa := range phuongXaList {
+		if phuongXa.Polygon == nil || strings.TrimSpace(*phuongXa.Polygon) == "" {
+			continue
+		}
+
+		coords, err := extractPrimaryPolygonCoordinates(*phuongXa.Polygon)
+		if err != nil || len(coords) < 3 {
+			log.Printf("Bỏ qua phường/xã %s (%s) vì polygon không hợp lệ: %v", phuongXa.TenPhuongXa, phuongXa.MaPhuongXa, err)
+			continue
+		}
+
+		latCenter, lonCenter := util.PolygonInteriorCentroid(coords)
+		if err := s.dmPhuongXaRepo.UpdateLatLonCenterByMaPhuongXa(phuongXa.MaPhuongXa, &latCenter, &lonCenter); err != nil {
+			return fmt.Errorf("không thể cập nhật tọa độ trung tâm của xã/phường %s: %w", phuongXa.MaPhuongXa, err)
+		}
+
+		updated++
+		log.Printf("Đã tạo lat/lon center cho %s (%s): %.6f, %.6f", phuongXa.TenPhuongXa, phuongXa.MaPhuongXa, latCenter, lonCenter)
+	}
+
+	log.Printf("Hoàn thành tạo lat/lon center cho %d/%d phường/xã", updated, len(phuongXaList))
+	return nil
+}
+
+func extractPrimaryPolygonCoordinates(polygonJSON string) ([][2]float64, error) {
+	var multi [][][]float64
+	if err := json.Unmarshal([]byte(polygonJSON), &multi); err == nil {
+		if coords := pickLargestPolygon(multi); len(coords) >= 3 {
+			return coords, nil
+		}
+	}
+
+	var single [][]float64
+	if err := json.Unmarshal([]byte(polygonJSON), &single); err == nil {
+		coords := convertFloatRing(single)
+		if len(coords) >= 3 {
+			return coords, nil
+		}
+	}
+
+	return nil, fmt.Errorf("polygon data không hợp lệ")
+}
+
+func pickLargestPolygon(polygons [][][]float64) [][2]float64 {
+	var best [][2]float64
+	var bestArea float64
+
+	for _, polygon := range polygons {
+		coords := convertFloatRing(polygon)
+		if len(coords) < 3 {
+			continue
+		}
+
+		area := math.Abs(polygonArea(coords))
+		if area > bestArea {
+			bestArea = area
+			best = coords
+		}
+	}
+
+	return best
+}
+
+func convertFloatRing(ring [][]float64) [][2]float64 {
+	coords := make([][2]float64, 0, len(ring))
+	for _, point := range ring {
+		if len(point) < 2 {
+			continue
+		}
+
+		coords = append(coords, [2]float64{point[0], point[1]})
+	}
+
+	return coords
+}
+
+func polygonArea(coords [][2]float64) float64 {
+	if len(coords) < 3 {
+		return 0
+	}
+
+	var area float64
+	for i := 0; i < len(coords); i++ {
+		j := (i + 1) % len(coords)
+		x0 := coords[i][1]
+		y0 := coords[i][0]
+		x1 := coords[j][1]
+		y1 := coords[j][0]
+		area += x0*y1 - x1*y0
+	}
+
+	return area * 0.5
 }

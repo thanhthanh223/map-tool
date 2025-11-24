@@ -145,6 +145,76 @@
             })
             .catch(err => console.error('Lỗi đọc list_polygon.txt:', err));
 
+        // Đọc polygon từ file vinh_am.txt
+        fetch('vinh_am.txt')
+            .then(resp => resp.text())
+            .then(text => {
+                try {
+                    const polygons = JSON.parse(text); // Mảng chứa các polygon
+                    if (!Array.isArray(polygons)) {
+                        console.error('Dữ liệu vinh_am.txt không phải là mảng');
+                        return;
+                    }
+
+                    console.log(`Đã đọc ${polygons.length} polygon từ file vinh_am.txt`);
+
+                    // Màu sắc cho từng polygon
+                    const vinhAmColors = ['#ff8800', '#00aaff', '#ff00aa', '#00ff88'];
+                    const vinhAmLayers = [];
+
+                    // Lặp qua từng polygon và vẽ lên bản đồ
+                    polygons.forEach((polygonCoords, index) => {
+                        if (!Array.isArray(polygonCoords) || polygonCoords.length < 3) {
+                            console.warn(`Polygon ${index + 1} từ vinh_am.txt không hợp lệ, bỏ qua`);
+                            return;
+                        }
+
+                        // Đảm bảo polygon đóng kín
+                        const first = polygonCoords[0];
+                        const last = polygonCoords[polygonCoords.length - 1];
+                        const isClosed = Math.abs(first[0] - last[0]) < 1e-6 && Math.abs(first[1] - last[1]) < 1e-6;
+                        if (!isClosed) {
+                            polygonCoords = [...polygonCoords, first];
+                        }
+
+                        // Vẽ polygon với màu khác nhau
+                        const color = vinhAmColors[index % vinhAmColors.length];
+                        const poly = L.polygon(polygonCoords, {
+                            color: color,
+                            weight: 5,
+                            fillColor: color,
+                            fillOpacity: 0.25,
+                            opacity: 0.9,
+                            dashArray: index === 0 ? '6 6' : '10 5' // Polygon đầu tiên có dash, các polygon khác có dash khác
+                        }).addTo(map);
+
+                        // Thêm popup hiển thị thông tin polygon
+                        poly.bindPopup(`
+                            <div class="info">
+                                <h3>Xã Vĩnh Am - Polygon ${index + 1}</h3>
+                                <p><strong>Màu:</strong> ${color}</p>
+                                <p><strong>Số điểm:</strong> ${polygonCoords.length}</p>
+                                <p><strong>Nguồn:</strong> vinh_am.txt</p>
+                            </div>
+                        `);
+
+                        // Lưu layer để fit bounds
+                        vinhAmLayers.push(poly);
+                    });
+
+                    // Fit bản đồ để hiển thị tất cả polygon từ vinh_am.txt
+                    if (vinhAmLayers.length > 0) {
+                        const group = new L.featureGroup(vinhAmLayers);
+                        map.fitBounds(group.getBounds().pad(0.1));
+                    }
+
+                    console.log(`Đã vẽ ${vinhAmLayers.length} polygon từ vinh_am.txt lên bản đồ`);
+                } catch (e) {
+                    console.error('Không thể parse vinh_am.txt:', e);
+                }
+            })
+            .catch(err => console.error('Lỗi đọc vinh_am.txt:', err));
+
         // Đánh dấu . đỏ các điểm này trên bản đồ
         const redPoints = [
             {id: 1336197283, lat: 20.6138317, lon: 106.4911370},

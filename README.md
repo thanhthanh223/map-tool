@@ -45,6 +45,38 @@ type Coordinate struct {
 }
 ```
 
+## Thiết lập môi trường
+
+1. Cài Go `1.25.1` (hoặc version mới hơn tương thích) và cập nhật `GOROOT/GOPATH` như hướng dẫn chính thức của Go.
+2. Tạo file `.env` ở thư mục gốc bằng cách sao chép mẫu:
+   - macOS/Linux: `cp config/app.env.example .env`
+   - PowerShell: `Copy-Item config/app.env.example .env`
+3. Điền thông tin thật cho các biến môi trường trong bảng dưới.
+4. Chuẩn bị các dịch vụ phụ thuộc:
+   - **Oracle**: có thể dùng Docker `gvenzl/oracle-xe` hoặc kết nối tới DB nội bộ.
+   - **Redis**: khởi chạy với `docker run -p 6379:6379 redis:7-alpine`.
+   - **MinIO**: dùng lệnh Docker ở phần "MinIO Integration" phía dưới.
+5. Cài dependencies Go: `go mod download`.
+6. Kiểm tra kết nối tới Oracle/Redis/MinIO, sau đó chạy `go run main.go`.
+
+| Nhóm | Biến môi trường | Mô tả | Ví dụ |
+|------|-----------------|-------|-------|
+| Oracle | `ORACLE_HOST` | Hostname/IP của DB | `localhost` |
+|  | `ORACLE_PORT` | Port listener | `1521` |
+|  | `ORACLE_SERVICE` | Service name/PDB | `FREEPDB1` |
+|  | `ORACLE_USER` | Username dùng cho app | `osm_app` |
+|  | `ORACLE_PASSWORD` | Mật khẩu | `changeme` |
+| Redis | `REDIS_ADDRESS` | Địa chỉ Redis single-node | `localhost:6379` |
+|  | `REDIS_CLUSTER` | Danh sách node cluster, ngăn cách bởi dấu phẩy | `10.0.0.1:7000,10.0.0.2:7000` |
+|  | `REDIS_PASSWORD` | Mật khẩu nếu có | *(để trống nếu không)* |
+|  | `REDIS_PREFIX` | Prefix key để tránh va chạm | `osm` |
+| MinIO | `MINIO_ENDPOINT` | `host:port` của MinIO | `localhost:9000` |
+|  | `MINIO_ACCESS_KEY_ID` | Access key | `minioadmin` |
+|  | `MINIO_SECRET_ACCESS_KEY` | Secret key | `minioadmin` |
+|  | `MINIO_BUCKET_NAME` | Bucket mặc định lưu polygon | `osm-data` |
+|  | `MINIO_USE_SSL` | `true/false` cho HTTPS | `false` |
+|  | `MINIO_RETURN_URL` | Base URL sinh link public | `http://localhost:9000` |
+
 ## Cách sử dụng
 
 ### 1. Sử dụng Service Layer (Khuyến nghị)

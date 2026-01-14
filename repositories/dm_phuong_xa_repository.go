@@ -34,7 +34,7 @@ func NewDmPhuongXaRepository(db *gorm.DB) *DmPhuongXaRepository {
 func (r *DmPhuongXaRepository) GetByName(name string, maTT string) (*entities.DmPhuongXa, error) {
 	var dmPhuongXa entities.DmPhuongXa
 	// Thử tìm kiếm chính xác trước
-	if err := r.db.Where("TEN_PHUONG_XA = ? AND TRUC_THUOC_TINH = ? AND POLYGON_DATA IS  NULL", name, maTT).First(&dmPhuongXa).Error; err != nil {
+	if err := r.db.Where("TEN_PHUONG_XA = ? AND TRUC_THUOC_TINH = ?", name, maTT).First(&dmPhuongXa).Error; err != nil {
 		// Lấy ra toàn bộ phường xã thuộc tỉnh theo mã tỉnh, chỉ lấy name và mã phường xã
 		var phuongs []struct {
 			MaPhuongXa  string
@@ -44,7 +44,7 @@ func (r *DmPhuongXaRepository) GetByName(name string, maTT string) (*entities.Dm
 		if err := r.db.
 			Table("DM_PHUONG_XA").
 			Select("MA_PHUONG_XA, TEN_PHUONG_XA").
-			Where("TRUC_THUOC_TINH = ? AND POLYGON_DATA IS  NULL", maTT).
+			Where("TRUC_THUOC_TINH = ?", maTT).
 			Find(&phuongs).Error; err != nil {
 			log.Printf("Lỗi khi lấy ra toàn bộ phường xã thuộc tỉnh theo mã tỉnh: %v", err)
 			return nil, err
@@ -55,7 +55,7 @@ func (r *DmPhuongXaRepository) GetByName(name string, maTT string) (*entities.Dm
 				dmPhuongXa.MaPhuongXa = phuong.MaPhuongXa
 				dmPhuongXa.TenPhuongXa = phuong.TenPhuongXa
 
-				err := r.db.Where("MA_PHUONG_XA = ? AND POLYGON_DATA IS  NULL", dmPhuongXa.MaPhuongXa).First(&dmPhuongXa).Error
+				err := r.db.Where("MA_PHUONG_XA = ?", dmPhuongXa.MaPhuongXa).First(&dmPhuongXa).Error
 				if err != nil {
 					log.Printf("Lỗi khi lấy ra phường xã từ database: %v", err)
 					return nil, err

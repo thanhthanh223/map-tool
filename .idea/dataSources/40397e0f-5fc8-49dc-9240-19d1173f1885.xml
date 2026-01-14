@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataSource name="kbtt_es">
+  <database-model serializer="dbm" dbms="ELASTICSEARCH" family-id="ELASTICSEARCH" format-version="4.53">
+    <root id="1">
+      <Dbms>ELASTICSEARCH</Dbms>
+      <DefaultCasing>exact</DefaultCasing>
+      <ServerVersion>7.17</ServerVersion>
+    </root>
+    <database id="2" parent="1">
+      <Current>1</Current>
+    </database>
+    <schema id="3" parent="2">
+      <Current>1</Current>
+      <LastIntrospectionLocalTimestamp>2025-12-04.07:40:59</LastIntrospectionLocalTimestamp>
+    </schema>
+  </database-model>
+</dataSource>

@@ -10,5 +10,29 @@
       <jdbc-url>jdbc:oracle:thin:@172.24.107.151:1521:XE</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="redis_gps_dev" uuid="8e55630d-7dd0-42c3-870f-4f6b239ae7c1">
+      <driver-ref>redis</driver-ref>
+      <synchronize>true</synchronize>
+      <remarks>redis cache</remarks>
+      <jdbc-driver>jdbc.RedisDriver</jdbc-driver>
+      <jdbc-url>jdbc:redis:cluster://172.24.107.150:6000/0</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="msa" uuid="2d26bb51-7103-4a24-b70b-766ae64dd36d">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <remarks>msa</remarks>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://pg-2f4335a5-zzzquangzzzthuzzz-da35.l.aivencloud.com:14619/postgres</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="kbtt_es" uuid="40397e0f-5fc8-49dc-9240-19d1173f1885">
+      <driver-ref>elasticsearch</driver-ref>
+      <synchronize>true</synchronize>
+      <remarks>kbtt es</remarks>
+      <jdbc-driver>org.elasticsearch.xpack.sql.jdbc.EsDriver</jdbc-driver>
+      <jdbc-url>jdbc:es://http://172.24.107.168:9200/</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

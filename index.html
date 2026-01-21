@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Đường bao Phường Hạ Long và Bãi Cháy</title>
+    <title>Đường bao Hàm Rồng & Hạc Thành</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -81,12 +81,13 @@
     </style>
 </head>
 <body>
-    <h1>Đường bao Phường Hạ Long, Bãi Cháy và Cao Xanh (Cao Lãnh)</h1>
+    <h1>Đường bao Hàm Rồng & Hạc Thành</h1>
     <div id="map"></div>
     <div class="control-panel">
         <h3 style="margin-top: 0;">Điều khiển</h3>
-        <button id="btnRemoveIntersection">Cập nhật polygon Hạ Long - Hồng Gai</button>
-        <button id="btnCutHonggai">Cắt Hồng Gai trừ Hạ Long &amp; xuất JSON</button>
+        <button id="btnRemoveIntersection">Cập nhật polygon Hàm Rồng - Hạc Thành</button>
+        <button id="btnCutHonggai">Cắt Hạc Thành trừ Hàm Rồng &amp; xuất JSON</button>
+        <button id="btnEraseCircle">Vẽ hình tròn để xóa điểm bên trong</button>
         <button id="btnReset">Khôi phục gốc</button>
         <button id="btnSaveTemp">Lưu tạm (localStorage + tải JSON)</button>
         <p id="status" style="font-size: 12px; color: #666; margin-top: 10px;"></p>
@@ -115,7 +116,7 @@
                 polygon: true,
                 polyline: false,
                 rectangle: false,
-                circle: false,
+                circle: true,
                 marker: false,
                 circlemarker: false
             }
@@ -176,14 +177,13 @@
         const allLayers = [];
         
         // Lưu các polygon gốc và layers để có thể reset
-        let halongPolygons = [];   // GeoJSON Polygon
-        let honggaiPolygons = [];  // GeoJSON Polygon
+        let halongPolygons = [];   // (Hàm Rồng) GeoJSON Polygon
+        let honggaiPolygons = [];  // (Hạc Thành) GeoJSON Polygon
         let halongLayers = [];
         let honggaiLayers = [];
-        let caolanhLayers = [];
         let intersectionLayer = null;
         let modifiedHalongLayer = null;
-        let unionAB = null; // union cố định của Hạ Long + Hồng Gai
+        let unionAB = null; // union cố định của Hàm Rồng + Hạc Thành
 
         // Hàm hợp nhất các polygon thành 1 polygon lớn
         function unionPolygons(polygons) {
@@ -407,10 +407,126 @@
                     const coords = firstRing.map(p => [p.lat, p.lng]);
                     if (coords.length >= 3) {
                         result.push(coords);
-                    }
+                }
+            }
+        });
+            return result;
+        }
+
+        // Xóa các đỉnh (vertex) của polygon nằm trong một hình tròn
+        // - centerLatLng: L.LatLng
+        // - radiusMeters: number
+        function removeVerticesInsideCircle(centerLatLng, radiusMeters) {
+            // Lấy TẤT CẢ polygon hiện đang trong editableLayers (không chỉ 2 xã)
+            const layersToProcess = [];
+            editableLayers.eachLayer(layer => {
+                if (layer instanceof L.Polygon) {
+                    layersToProcess.push(layer);
                 }
             });
-            return result;
+
+            let removedCount = 0;
+            let touchedPolygons = 0;
+
+            // Lưu trạng thái editing của từng layer
+            const editingStates = new Map();
+            layersToProcess.forEach(layer => {
+                if (layer instanceof L.Polygon && layer.editing) {
+                    editingStates.set(layer, layer.editing._enabled);
+                    // Tắt editing mode trước khi xóa để tránh conflict với vertex handles
+                    layer.editing.disable();
+                }
+            });
+
+            layersToProcess.forEach(layer => {
+                if (!(layer instanceof L.Polygon)) return;
+
+                const latlngs = layer.getLatLngs();
+                const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+                if (!ring || ring.length < 3) return;
+
+                const filtered = ring.filter(p => {
+                    const d = map.distance(centerLatLng, p);
+                    const keep = d > radiusMeters;
+                    if (!keep) removedCount++;
+                    return keep;
+                });
+
+                // Nếu xóa quá nhiều khiến polygon không còn hợp lệ thì bỏ qua (giữ nguyên)
+                if (filtered.length < 3) {
+                    // Bật lại editing nếu đã tắt
+                    if (editingStates.get(layer)) {
+                        layer.editing.enable();
+                    }
+                    return;
+                }
+
+                // Tạo lại LatLng objects mới để đảm bảo Leaflet cập nhật đúng
+                const newLatLngs = filtered.map(p => {
+                    // Nếu p đã là LatLng object thì giữ nguyên, nếu không thì tạo mới
+                    return p instanceof L.LatLng ? p : L.latLng(p.lat || p[0], p.lng || p[1]);
+                });
+                
+                // Cập nhật polygon với dữ liệu mới
+                layer.setLatLngs(newLatLngs);
+                layer.redraw();
+                
+                touchedPolygons++;
+            });
+
+            // Bật lại editing mode cho các layer đã bật trước đó
+            editingStates.forEach((wasEnabled, layer) => {
+                if (wasEnabled && layer.editing) {
+                    // Delay một chút để đảm bảo polygon đã được cập nhật xong
+                    setTimeout(() => {
+                        layer.editing.enable();
+                    }, 100);
+                }
+            });
+
+            document.getElementById('status').textContent =
+                `Đã xóa ${removedCount} điểm trong vòng tròn (ảnh hưởng ${touchedPolygons} polygon). Bấm "Lưu tạm" để xuất JSON.`;
+        }
+
+        // Tự động cập nhật Hạc Thành = unionAB \ Hàm Rồng hiện tại
+        function autoUpdateHonggaiFromHalong() {
+            if (!unionAB || halongLayers.length === 0 || honggaiLayers.length === 0) return;
+            try {
+                // Union tất cả layer Hàm Rồng hiện tại
+                const currentHalongPolys = [];
+                halongLayers.forEach(layer => {
+                    const latlngs = layer.getLatLngs();
+                    const firstRing = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+                    const coords = firstRing.map(p => [p.lat, p.lng]);
+                    if (coords.length >= 3) currentHalongPolys.push(toGeoJSONPolygon(coords));
+                });
+
+                const newHalongUnion = unionPolygons(currentHalongPolys);
+                if (!newHalongUnion) return;
+
+                const newHonggai = turf.difference(unionAB, newHalongUnion);
+                if (!newHonggai) return;
+
+                const newBCoords = fromGeoJSONPolygon(newHonggai);
+                if (newBCoords.length < 3) return;
+
+                // Cập nhật lại layer Hạc Thành
+                removeLayers(honggaiLayers);
+                honggaiLayers = [];
+                honggaiPolygons = [newHonggai];
+
+                const layerB = drawPolygon(
+                    newBCoords,
+                    'red',
+                    'Hạc Thành (tự cập nhật)'
+                );
+                if (layerB) {
+                    honggaiLayers.push(layerB);
+                    allLayers.push(layerB);
+                }
+            } catch (err) {
+                console.error('autoUpdateHonggaiFromHalong error', err);
+            }
         }
 
         // Thu thập tất cả polygon hiện có trong editableLayers (dùng cho debug)
@@ -423,9 +539,9 @@
                     const coords = firstRing.map(p => [p.lat, p.lng]);
                     if (coords.length >= 3) {
                         result.push(coords);
-                    }
                 }
-            });
+            }
+        });
             return result;
         }
 
@@ -433,9 +549,8 @@
         function saveTempPolygons() {
             const halongPolys  = collectPolygonsFromLayerArray(halongLayers);
             const honggaiPolys = collectPolygonsFromLayerArray(honggaiLayers);
-            const caolanhPolys = collectPolygonsFromLayerArray(caolanhLayers);
 
-            if (halongPolys.length === 0 && honggaiPolys.length === 0 && caolanhPolys.length === 0) {
+            if (halongPolys.length === 0 && honggaiPolys.length === 0) {
                 document.getElementById('status').textContent = 'Không có polygon nào để lưu.';
                 return;
             }
@@ -465,25 +580,24 @@
             }
 
             // Lưu riêng từng phường
-            saveOne('halong_polygons_temp',  'polygon_halong_updated.json',  halongPolys);
-            saveOne('honggai_polygons_temp', 'polygon_honggai_updated.json', honggaiPolys);
-            saveOne('caolanh_polygons_temp', 'polygon_caolanh_updated.json', caolanhPolys);
+            saveOne('halong_polygons_temp',  'hamrong_updated.json',  halongPolys);
+            saveOne('honggai_polygons_temp', 'hacthanh_updated.json', honggaiPolys);
 
             document.getElementById('status').textContent =
-                `Đã lưu tạm: Hạ Long (${halongPolys.length}), Hồng Gai (${honggaiPolys.length}), Cao Lãnh (${caolanhPolys.length}) polygon (localStorage + file JSON).`;
+                `Đã lưu tạm: Hàm Rồng (${halongPolys.length}), Hạc Thành (${honggaiPolys.length}) polygon (localStorage + file JSON).`;
         }
 
         // Cắt phần Hồng Gai giao với Hạ Long ra khỏi Hồng Gai và xuất file JSON riêng
         function cutHonggaiByHalongAndExport() {
             if (halongLayers.length === 0 || honggaiLayers.length === 0) {
-                document.getElementById('status').textContent = 'Cần có cả layer Hạ Long và Hồng Gai để cắt.';
+                document.getElementById('status').textContent = 'Cần có cả layer Hàm Rồng và Hạc Thành để cắt.';
                 return;
             }
 
             try {
-                // Union Hạ Long hiện tại (sau khi có thể đã chỉnh sửa)
+                // Union Hàm Rồng hiện tại (sau khi có thể đã chỉnh sửa)
                 const halongUnionCurrent = getUnionFromLayerArray(halongLayers);
-                // Union Hồng Gai hiện tại
+                // Union Hạc Thành hiện tại
                 const honggaiUnionCurrent = getUnionFromLayerArray(honggaiLayers);
 
                 if (!halongUnionCurrent || !honggaiUnionCurrent) {
@@ -491,10 +605,10 @@
                     return;
                 }
 
-                // Hồng Gai mới = Hồng Gai hiện tại \ Hạ Long hiện tại
+                // Hạc Thành mới = Hạc Thành hiện tại \ Hàm Rồng hiện tại
                 const honggaiDiff = turf.difference(honggaiUnionCurrent, halongUnionCurrent);
                 if (!honggaiDiff) {
-                    document.getElementById('status').textContent = 'Không tìm được phần Hồng Gai sau khi trừ Hạ Long (có thể trùng hoàn toàn).';
+                    document.getElementById('status').textContent = 'Không tìm được phần Hạc Thành sau khi trừ Hàm Rồng (có thể trùng hoàn toàn).';
                     return;
                 }
 
@@ -512,14 +626,14 @@
                 const newBLayer = drawPolygon(
                     newBCoords,
                     'red',
-                    'Bãi Cháy (đã trừ phần giao với Hạ Long)'
+                    'Hạc Thành (đã trừ phần giao với Hàm Rồng)'
                 );
                 if (newBLayer) {
                     honggaiLayers.push(newBLayer);
                     allLayers.push(newBLayer);
                 }
 
-                // Xuất JSON chỉ chứa Hồng Gai mới
+                // Xuất JSON chỉ chứa Hạc Thành mới
                 const data = [newBCoords]; // format giống file polygon_*.txt
                 const json = JSON.stringify(data);
 
@@ -535,36 +649,58 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'polygon_honggai_trimmed.json';
+                a.download = 'hacthanh_trimmed.json';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
                 document.getElementById('status').textContent =
-                    'Đã cắt phần giao Hồng Gai ∩ Hạ Long và xuất file polygon_honggai_trimmed.json.';
+                    'Đã cắt phần giao Hạc Thành ∩ Hàm Rồng và xuất file hacthanh_trimmed.json.';
             } catch (e) {
-                console.error('Lỗi khi cắt Hồng Gai trừ Hạ Long:', e);
-                document.getElementById('status').textContent = 'Lỗi khi cắt Hồng Gai trừ Hạ Long: ' + e.message;
+                console.error('Lỗi khi cắt Hạc Thành trừ Hàm Rồng:', e);
+                document.getElementById('status').textContent = 'Lỗi khi cắt Hạc Thành trừ Hàm Rồng: ' + e.message;
             }
         }
 
         // Gắn event listeners cho các nút
         document.getElementById('btnRemoveIntersection').addEventListener('click', enableEditForHalongHonggai);
         document.getElementById('btnCutHonggai').addEventListener('click', cutHonggaiByHalongAndExport);
+        document.getElementById('btnEraseCircle').addEventListener('click', startEraseCircleMode);
         document.getElementById('btnReset').addEventListener('click', resetPolygons);
         document.getElementById('btnSaveTemp').addEventListener('click', saveTempPolygons);
 
         // Sự kiện khi vẽ mới / chỉnh sửa / xóa polygon bằng Leaflet.draw
         map.on(L.Draw.Event.CREATED, function (e) {
             const layer = e.layer;
+            // Nếu vẽ hình tròn: dùng nó để xóa các điểm nằm trong vòng tròn rồi tự xóa circle
+            if (e.layerType === 'circle') {
+                const center = layer.getLatLng();
+                const radius = layer.getRadius(); // meters
+                // vẫn add để người dùng thấy, sau đó remove luôn
+                editableLayers.addLayer(layer);
+                removeVerticesInsideCircle(center, radius);
+                editableLayers.removeLayer(layer);
+                return;
+            }
+
             editableLayers.addLayer(layer);
             document.getElementById('status').textContent = 'Đã vẽ polygon mới. Bấm \"Lưu tạm\" để lưu JSON.';
             console.log('Polygon mới:', JSON.stringify(collectAllPolygonsFromEditableLayers()));
         });
 
+        // Bắt đầu chế độ vẽ hình tròn để xóa điểm
+        function startEraseCircleMode() {
+            const circleDrawer = new L.Draw.Circle(map, drawControl.options.draw.circle);
+            circleDrawer.enable();
+            document.getElementById('status').textContent = 'Chế độ vẽ hình tròn: vẽ một vòng tròn để xóa các điểm bên trong. Hình tròn sẽ tự biến mất sau khi áp dụng.';
+        }
+
         map.on(L.Draw.Event.EDITED, function (e) {
             document.getElementById('status').textContent = 'Đã chỉnh sửa polygon. Bấm \"Lưu tạm\" để lưu JSON. Đang cập nhật phường bên cạnh...';
+            autoUpdateHonggaiFromHalong();
+            console.log('Polygon sau khi chỉnh sửa:', JSON.stringify(collectAllPolygonsFromEditableLayers()));
+            return;
 
             // Nếu có unionAB, tự động cho Hồng Gai chiếm phần còn lại khi Hạ Long thay đổi
             if (unionAB && halongLayers.length > 0 && honggaiLayers.length > 0) {
@@ -617,8 +753,8 @@
             console.log('Polygon sau khi xóa:', JSON.stringify(collectAllPolygonsFromEditableLayers()));
         });
 
-        // Đọc polygon Hạ Long
-        fetch('polygon_halong.txt')
+        // Đọc polygon Hàm Rồng
+        fetch('hamrong_polygon.txt')
             .then(resp => resp.text())
             .then(text => {
                 try {
@@ -637,7 +773,7 @@
                                 const layer = drawPolygon(
                                     polygonCoords, 
                                     'blue', 
-                                    `Hạ Long - Polygon ${index + 1}`
+                                    `Hàm Rồng - Polygon ${index + 1}`
                                 );
                                 if (layer) {
                                     halongLayers.push(layer);
@@ -661,8 +797,8 @@
             })
             .catch(err => console.error('Lỗi fetch polygon_halong.txt:', err));
 
-        // Đọc polygon Bãi Cháy (Hồng Gai)
-        fetch('polygon_honggai.txt')
+        // Đọc polygon Hạc Thành
+        fetch('hacthanh_polygon.txt')
             .then(resp => resp.text())
             .then(text => {
                 try {
@@ -681,7 +817,7 @@
                                 const layer = drawPolygon(
                                     polygonCoords, 
                                     'red', 
-                                    `Bãi Cháy - Polygon ${index + 1}`
+                                    `Hạc Thành - Polygon ${index + 1}`
                                 );
                                 if (layer) {
                                     honggaiLayers.push(layer);
@@ -705,42 +841,7 @@
             })
             .catch(err => console.error('Lỗi fetch polygon_honggai.txt:', err));
 
-        // Đọc polygon Cao Lãnh (Cao Lanh / Cao Xanh)
-        fetch('polygon_caolanh.txt')
-            .then(resp => resp.text())
-            .then(text => {
-                try {
-                    const data = JSON.parse(text);
-                    
-                    // Format: [[[lat,lon],...], [[lat,lon],...]] - mảng các polygon
-                    if (Array.isArray(data)) {
-                        data.forEach((polygonCoords, index) => {
-                            if (Array.isArray(polygonCoords) && polygonCoords.length >= 3) {
-                                const layer = drawPolygon(
-                                    polygonCoords, 
-                                    'green', 
-                                    `Cao Lãnh - Polygon ${index + 1}`
-                                );
-                                if (layer) {
-                                    caolanhLayers.push(layer);
-                                    allLayers.push(layer);
-                                }
-                            }
-                        });
-                    }
-
-                    // Fit bounds sau khi đọc xong cả các file
-                    if (allLayers.length > 0) {
-                        const group = new L.featureGroup(allLayers);
-                        map.fitBounds(group.getBounds().pad(0.1));
-                    }
-
-                    console.log(`Đã vẽ ${data.length} polygon từ Cao Lãnh`);
-                } catch (e) {
-                    console.error('Lỗi đọc polygon_caolanh.txt:', e);
-                }
-            })
-            .catch(err => console.error('Lỗi fetch polygon_caolanh.txt:', err));
+        // (Đã bỏ tải Cao Lãnh; chỉ dùng Hàm Rồng và Hạc Thành)
   </script>
 </body>
 </html>

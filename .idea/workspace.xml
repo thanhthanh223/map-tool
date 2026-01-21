@@ -5,17 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="bf1cafe1-6ba6-4e20-9584-71220e1cffbc" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/polygon_caolanh.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/polygon_halong.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/polygon_honggai.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/84db93b3-d879-40d7-8263-dde13dc77d5e.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/84db93b3-d879-40d7-8263-dde13dc77d5e.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/id.txt" beforeDir="false" afterPath="$PROJECT_DIR$/id.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/repositories/dm_phuong_xa_repository.go" beforeDir="false" afterPath="$PROJECT_DIR$/repositories/dm_phuong_xa_repository.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/polygon_caolanh.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/polygon_halong.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/polygon_honggai.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/provinces_10101_polygon.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/provinces_10501_polygon.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/provinces_10701_polygon.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/provinces_1902682_polygon.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/provinces_1902682_polygon_1.txt" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,26 +31,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "database.data.extractors.current.export.id": "Comma-separated (CSV)_id",
-    "database.data.extractors.current.id": "Comma-separated (CSV)_id",
-    "git-widget-placeholder": "master",
-    "last_opened_file_path": "C:/Users/phuon",
-    "settings.editor.selected.configurable": "database.data.csv.formats"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;database.data.extractors.current.export.id&quot;: &quot;SQL Updates&quot;,
+    &quot;database.data.extractors.current.id&quot;: &quot;Comma-separated (CSV)_id&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/phuon&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;database.data.csv.formats&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "elasticsearch",
-      "postgresql",
-      "redis",
-      "oracle"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;elasticsearch&quot;,
+      &quot;postgresql&quot;,
+      &quot;redis&quot;,
+      &quot;oracle&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="bf1cafe1-6ba6-4e20-9584-71220e1cffbc" name="Changes" comment="" />
